@@ -3,13 +3,16 @@ const mysql = require('mysql2');
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: 'passwordmu',
-  database: 'CrimeWatch'
+  password: '',
+  database: 'crimewatch'
 });
 
 connection.connect((err) => {
-  if (err) throw err;
-  console.log('Connected to CrimeWatch database.');
+  if (err) {
+    console.error('Database connection failed:', err.stack);
+    return;
+  }
+  console.log('Connected to database.');
 });
 
 module.exports = connection;

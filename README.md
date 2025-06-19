@@ -1,2 +1,2 @@
 - Akan Pakai express.js untuk ini jadi install node.js dan npm dulu ya
-- sama pastikan tablenya di database CrimeWatch
+- sama pastikan tablenya di database crimewatch
