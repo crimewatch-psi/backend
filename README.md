@@ -1,2 +1,2 @@
-- Akan Pakai express.js untuk ini jadi install node.js dan npm dulu ya
+- Akan Pakai express.js | express-session untuk ini jadi install node.js dan npm dulu ya untuk menginstallnya
 - sama pastikan tablenya di database crimewatch

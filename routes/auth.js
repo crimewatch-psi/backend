@@ -28,15 +28,26 @@ router.post('/login', (req, res) => {
     }
 
     // Berhasil
+    req.session.user = {
+      id: user.id,
+      nama: user.nama,
+      email: user.email,
+      role: user.role
+};
+
     res.json({
-      message: 'Login berhasil',
-      user: {
-        id: user.id,
-        nama: user.nama,
-        email: user.email,
-        role: user.role
-      }
-    });
+     message: 'Login berhasil',
+     user: req.session.user
+});
+  });
+});
+
+// endpoint POST /logout
+router.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) return res.status(500).json({ error: 'Gagal logout' });
+    res.clearCookie('connect.sid'); // nama default cookie express-session
+    res.json({ message: 'Logout berhasil' });
   });
 });
 
