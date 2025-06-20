@@ -12,11 +12,11 @@ INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 -- =================================================================
 -- 2. MENGISI TABEL 'heatmap'
 -- =================================================================
-INSERT INTO `heatmap` (`mapid`, `userid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
-(1, 1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
-(2, 1, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
-(3, 1, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
-(4, 6, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
+INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
+(1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
+(2, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
+(3, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
+(4, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
 
 -- =================================================================
 -- 3. MENGISI TABEL 'data_kriminal'

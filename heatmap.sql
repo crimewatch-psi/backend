@@ -1,6 +1,5 @@
 CREATE TABLE heatmap (
     mapid INT PRIMARY KEY AUTO_INCREMENT,
-    userid INT,
     nama_lokasi VARCHAR(255),
     latitude FLOAT,
     longitude FLOAT,
