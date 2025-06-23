@@ -1,6 +1,50 @@
+-- Hapus tabel jika sudah ada
+DROP TABLE IF EXISTS `data_kriminal`;
+DROP TABLE IF EXISTS `heatmap`;
+DROP TABLE IF EXISTS `user`;
+
 -- =================================================================
--- 1. MENGISI TABEL 'user'
+-- BAGIAN 1: MEMBUAT STRUKTUR TABEL
 -- =================================================================
+
+-- Tabel: user
+CREATE TABLE `user` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `nama` VARCHAR(255),
+  `email` VARCHAR(255) UNIQUE,
+  `password` VARCHAR(255),
+  `role` ENUM('admin', 'manager', 'polri'),
+  `status` ENUM('aktif', 'nonaktif') NOT NULL DEFAULT 'aktif'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabel: heatmap
+CREATE TABLE `heatmap` (
+  `mapid` INT PRIMARY KEY AUTO_INCREMENT,
+  `userid` INT,
+  `nama_lokasi` VARCHAR(255),
+  `latitude` FLOAT,
+  `longitude` FLOAT,
+  `gmaps_url` TEXT,
+  `status` ENUM('aktif', 'mati'),
+  FOREIGN KEY (`userid`) REFERENCES `user`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabel: data_kriminal
+CREATE TABLE `data_kriminal` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `mapid` INT,
+  `jenis_kejahatan` VARCHAR(255),
+  `waktu` TIMESTAMP,
+  `deskripsi` TEXT,
+  FOREIGN KEY (`mapid`) REFERENCES `heatmap`(`mapid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- =================================================================
+-- BAGIAN 2: MENGISI SEMUA TABEL DENGAN DATA AWAL (SEEDING)
+-- =================================================================
+
+-- Mengisi tabel 'user'
 INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 (1, 'Afifuddin Mahfud', 'afifuddin.m@example.com', 'password123', 'admin'),
 (2, 'Amelia Zakiya Sabrina', 'amelia.zs@example.com', 'password123', 'manager'),
@@ -9,16 +53,16 @@ INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 (5, 'Fawwaz Akbar Wibowo', 'fawwaz.aw@example.com', 'password123', 'manager'),
 (6, 'Polisi Pariwisata DIY', 'polpar.diy@example.com', 'password123', 'polri');
 
--- =================================================================
--- 2. MENGISI TABEL 'heatmap'
--- =================================================================
-INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
-(1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
-(2, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
-(3, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
-(4, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
+-- Mengisi tabel 'heatmap'
+-- Asumsi userid=1 (admin) yang menambahkan semua lokasi awal
+INSERT INTO `heatmap` (`mapid`, `userid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
+(1, 1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
+(2, 1, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
+(3, 1, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
+(4, 1, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
 
--- 3. MENGISI DATA KRIMINAL LENGKAP
+-- Mengisi tabel 'data_kriminal'
+
 -- Data untuk Jalan Malioboro (mapid=1)
 INSERT INTO `data_kriminal` (`mapid`, `jenis_kejahatan`, `waktu`, `deskripsi`) VALUES
 (1, 'Pencopetan', '2023-07-15 19:30:00', 'Seorang wisatawan kehilangan dompet di tengah keramaian. Pelaku tidak teridentifikasi.'),
