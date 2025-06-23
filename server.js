@@ -1,6 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(session({
 
 // Routing
 app.use('/api', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // endpoint cek session
 app.get('/api/session', (req, res) => {
