@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { isAdmin } = require('../middleware/auth'); // Import middleware admin
+const { isAdmin } = require('../middleware/adminauth'); // Import middleware admin
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
+const upload = multer({ dest: 'uploads/' }); // Temporary upload folder (pastikan folder ini ada)
 
-// =================================================================
 // 1. FUNGSI MANAGE USER
-// =================================================================
-
-// Endpoint untuk mendapatkan semua data user (berguna untuk admin)
+//mendapatkan semua data user (berguna untuk admin)
 // GET /api/admin/users
 router.get('/users', isAdmin, (req, res) => {
     // Ambil semua kolom kecuali password untuk keamanan
@@ -19,7 +20,7 @@ router.get('/users', isAdmin, (req, res) => {
 });
 
 
-// Endpoint untuk mengubah status user (aktif/nonaktif)
+//mengubah status user (aktif/nonaktif)
 // PATCH /api/admin/users/:id/status
 router.patch('/users/:id/status', isAdmin, (req, res) => {
     const { id } = req.params;
@@ -45,10 +46,7 @@ router.patch('/users/:id/status', isAdmin, (req, res) => {
     });
 });
 
-// =================================================================
 // 2. FUNGSI MANAGE LOKASI (HEATMAP)
-// =================================================================
-
 // Endpoint untuk mengubah status lokasi (aktif/mati)
 // PATCH /api/admin/heatmap/:mapid/status
 router.patch('/heatmap/:mapid/status', isAdmin, (req, res) => {
@@ -70,31 +68,38 @@ router.patch('/heatmap/:mapid/status', isAdmin, (req, res) => {
     });
 });
 
-// =================================================================
 // 3. FUNGSI UPLOAD DATA KRIMINAL BARU
-// =================================================================
-
-// Endpoint untuk menambah data kriminal baru
-// POST /api/admin/kriminal
-router.post('/kriminal', isAdmin, (req, res) => {
-    const { mapid, jenis_kejahatan, waktu, deskripsi } = req.body;
-
-    // Validasi input dasar
-    if (!mapid || !jenis_kejahatan || !waktu || !deskripsi) {
-        return res.status(400).json({ error: 'Semua field wajib diisi: mapid, jenis_kejahatan, waktu, deskripsi.' });
+// Endpoint: Upload CSV and import data_kriminal
+// POST /api/admin/kriminal/upload
+router.post('/kriminal/upload', isAdmin, upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'File CSV tidak ditemukan.' });
     }
 
-    const query = 'INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi) VALUES (?, ?, ?, ?)';
-    db.query(query, [mapid, jenis_kejahatan, waktu, deskripsi], (err, results) => {
-        if (err) {
-            // Cek jika error karena foreign key constraint (mapid tidak ada di tabel heatmap)
-            if(err.code === 'ER_NO_REFERENCED_ROW_2') {
-                return res.status(404).json({ error: `Lokasi dengan mapid ${mapid} tidak ditemukan.`});
-            }
-            return res.status(500).json({ error: 'Kesalahan server saat menyimpan data.' });
-        }
-        res.status(201).json({ message: 'Data kriminal baru berhasil ditambahkan.', id: results.insertId });
-    });
+    const results = [];
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', () => {
+            // Insert each row into data_kriminal
+            const values = results.map(row => [
+                row.mapid,
+                row.jenis_kejahatan,
+                row.waktu,
+                row.deskripsi
+            ]);
+            const query = 'INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi) VALUES ?';
+            db.query(query, [values], (err, result) => {
+                fs.unlinkSync(req.file.path); // Remove temp file
+                if (err) {
+                    return res.status(500).json({ error: 'Gagal import data.', detail: err });
+                }
+                res.json({ message: 'Import data berhasil', imported: result.affectedRows });
+            });
+        })
+        .on('error', (err) => {
+            fs.unlinkSync(req.file.path);
+            res.status(500).json({ error: 'Gagal membaca file CSV.', detail: err });
+        });
 });
-
 module.exports = router;

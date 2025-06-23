@@ -1,2 +1,9 @@
-- Akan Pakai express.js | express-session untuk ini jadi install node.js dan npm dulu ya untuk menginstallnya
+- Dependencies yang diperlukan:
+  - node.js dan npm
+  - express.js (npm)
+  - express-session (npm)
+  - mysql2 (npm)
+  - bycrypt (npm)
+  - multer (npm)
+  - csv-parser (npm)
 - sama pastikan tablenya di database crimewatch

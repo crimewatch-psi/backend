@@ -3,5 +3,6 @@ CREATE TABLE user (
     nama VARCHAR(255),
     email VARCHAR(255) UNIQUE,
     password VARCHAR(255),
-    role ENUM('admin', 'manager', 'polri')
+    role ENUM('admin', 'manager', 'polri'),
+    status ENUM('aktif', 'nonaktif') DEFAULT 'aktif'
 );
