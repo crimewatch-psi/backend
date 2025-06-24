@@ -47,7 +47,6 @@ INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 (6, 'Polisi Pariwisata DIY', 'polpar.diy@example.com', 'password123', 'polri');
 
 -- Mengisi tabel 'heatmap'
--- Asumsi userid=1 (admin) yang menambahkan semua lokasi awal
 INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
 (1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
 (2, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
@@ -55,7 +54,6 @@ INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_u
 (4, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
 
 -- Mengisi tabel 'data_kriminal'
-
 -- Data untuk Jalan Malioboro (mapid=1)
 INSERT INTO `data_kriminal` (`mapid`, `jenis_kejahatan`, `waktu`, `deskripsi`) VALUES
 (1, 'Pencopetan', '2023-07-15 19:30:00', 'Seorang wisatawan kehilangan dompet di tengah keramaian. Pelaku tidak teridentifikasi.'),

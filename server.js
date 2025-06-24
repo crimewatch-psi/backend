@@ -2,6 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const kriminalRoutes = require('./routes/kriminal');
 
 const app = express();
 
@@ -9,7 +10,7 @@ app.use(express.json());
 
 // Session middleware
 app.use(session({
-  secret: 'crimewatch_super_secret', // bisa diganti
+  secret: 'secrettoken', // bisa diganti
   resave: false,
   saveUninitialized: true,
   cookie: {
@@ -20,6 +21,7 @@ app.use(session({
 // Routing
 app.use('/api', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/kriminal', kriminalRoutes);
 
 // endpoint cek session
 app.get('/api/session', (req, res) => {
