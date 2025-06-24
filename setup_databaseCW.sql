@@ -3,9 +3,7 @@ DROP TABLE IF EXISTS `data_kriminal`;
 DROP TABLE IF EXISTS `heatmap`;
 DROP TABLE IF EXISTS `user`;
 
--- =================================================================
--- BAGIAN 1: MEMBUAT STRUKTUR TABEL
--- =================================================================
+-- MEMBUAT STRUKTUR TABEL
 
 -- Tabel: user
 CREATE TABLE `user` (
@@ -20,13 +18,11 @@ CREATE TABLE `user` (
 -- Tabel: heatmap
 CREATE TABLE `heatmap` (
   `mapid` INT PRIMARY KEY AUTO_INCREMENT,
-  `userid` INT,
   `nama_lokasi` VARCHAR(255),
   `latitude` FLOAT,
   `longitude` FLOAT,
   `gmaps_url` TEXT,
-  `status` ENUM('aktif', 'mati'),
-  FOREIGN KEY (`userid`) REFERENCES `user`(`id`)
+  `status` ENUM('aktif', 'mati')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tabel: data_kriminal
@@ -39,10 +35,7 @@ CREATE TABLE `data_kriminal` (
   FOREIGN KEY (`mapid`) REFERENCES `heatmap`(`mapid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-
--- =================================================================
--- BAGIAN 2: MENGISI SEMUA TABEL DENGAN DATA AWAL (SEEDING)
--- =================================================================
+-- (SEEDING)
 
 -- Mengisi tabel 'user'
 INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
@@ -55,11 +48,11 @@ INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 
 -- Mengisi tabel 'heatmap'
 -- Asumsi userid=1 (admin) yang menambahkan semua lokasi awal
-INSERT INTO `heatmap` (`mapid`, `userid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
-(1, 1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
-(2, 1, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
-(3, 1, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
-(4, 1, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
+INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
+(1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
+(2, 'Kawasan Candi Prambanan', -7.7520, 110.4915, 'https://maps.app.goo.gl/jSVj35B4564SBjLV7', 'aktif'),
+(3, 'Alun-Alun Kidul Yogyakarta', -7.8124, 110.3638, 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8', 'aktif'),
+(4, 'Titik Nol Kilometer Yogyakarta', -7.7998, 110.3657, 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9', 'aktif');
 
 -- Mengisi tabel 'data_kriminal'
 
