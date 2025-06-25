@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// Ambil semua data kriminal berdasarkan mapid
+// ambil data kriminal sesuai mapid
 router.get('/', (req, res) => {
   const mapid = parseInt(req.query.mapid, 10);
   if (!mapid) {

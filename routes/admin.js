@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { isAdmin } = require('../middleware/adminauth'); // Import middleware admin
+const { isAdmin } = require('../middleware/adminauth');
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');

@@ -3,6 +3,8 @@ const session = require('express-session');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const kriminalRoutes = require('./routes/kriminal');
+const chatbotRoutes = require('./routes/chatbot');
+require('dotenv').config();
 
 const app = express();
 
@@ -22,6 +24,7 @@ app.use(session({
 app.use('/api', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/kriminal', kriminalRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // endpoint cek session
 app.get('/api/session', (req, res) => {

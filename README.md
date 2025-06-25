@@ -6,4 +6,5 @@
   - bycrypt (npm)
   - multer (npm)
   - csv-parser (npm)
+  - openai (npm)
 - sama pastikan tablenya di database crimewatch
