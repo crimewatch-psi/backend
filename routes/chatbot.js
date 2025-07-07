@@ -1,22 +1,27 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../db');
-const { OpenAI } = require('openai');
+const db = require("../db");
+const { OpenAI } = require("openai");
+const dotenv = require("dotenv");
+dotenv.config();
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY  
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Endpoint untuk chatbot yang menjawab pertanyaan berdasarkan data kriminal
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   const { mapid, question } = req.body;
 
   if (!mapid || !question) {
-    return res.status(400).json({ error: 'Parameter mapid dan question wajib diisi.' });
+    return res
+      .status(400)
+      .json({ error: "Parameter mapid dan question wajib diisi." });
   }
 
   if (question.length > 500) {
-    return res.status(400).json({ error: 'Pertanyaan terlalu panjang. Maksimal 500 karakter.' });
+    return res
+      .status(400)
+      .json({ error: "Pertanyaan terlalu panjang. Maksimal 500 karakter." });
   }
 
   const query = `
@@ -28,35 +33,39 @@ router.post('/', async (req, res) => {
   `;
 
   db.query(query, [mapid], async (err, results) => {
-    if (err) return res.status(500).json({ error: 'Gagal ambil data kriminal.' });
+    if (err)
+      return res.status(500).json({ error: "Gagal ambil data kriminal." });
     if (results.length === 0) {
-      return res.status(404).json({ error: 'Tidak ada data kriminal untuk lokasi ini.' });
+      return res
+        .status(404)
+        .json({ error: "Tidak ada data kriminal untuk lokasi ini." });
     }
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-2024-08-06", // bisa diganti jika tidak bisa dipakai atau ada model lain yang lebih sesuai
+        model: "gpt-3.5-turbo", // Using a stable model version
         messages: [
           {
             role: "system",
             content:
-             `Anda adalah asisten keamanan cerdas. Anda diberi data JSON berisi daftar kejahatan terbaru (maksimal 100 kasus) pada satu lokasi wisata tertentu. Gunakan data ini sebagai referensi untuk menjawab pertanyaan berikut:\n\n` +
-             `${JSON.stringify(results)}`
+              `Anda adalah asisten keamanan cerdas. Anda diberi data JSON berisi daftar kejahatan terbaru (maksimal 100 kasus) pada satu lokasi wisata tertentu. Gunakan data ini sebagai referensi untuk menjawab pertanyaan berikut:\n\n` +
+              `${JSON.stringify(results)}`,
           },
           {
             role: "user",
-            content: question
-          }
+            content: question,
+          },
         ],
-        temperature: 0.7
+        temperature: 0.7,
       });
 
       const aiReply = response.choices[0].message.content;
       res.json({ reply: aiReply });
-
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: 'Gagal menghubungi OpenAI API.' });
+      res.status(500).json({ error: "Gagal menghubungi OpenAI API." });
     }
   });
 });
+
+module.exports = router;

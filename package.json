@@ -1,0 +1,27 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "- Dependencies yang diperlukan:   - node.js dan npm   - express.js (npm)   - express-session (npm)   - mysql2 (npm)   - bycrypt (npm)   - multer (npm)   - csv-parser (npm)   - openai (npm) - sama pastikan tablenya di database crimewatch",
+  "main": "db.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "build": "npm install && npm install -g nodemon && npm install -g pm2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^17.0.1",
+    "express": "^4.18.2",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.1",
+    "mysql2": "^3.14.1",
+    "nodemon": "^3.1.10",
+    "openai": "^5.8.2"
+  }
+}
