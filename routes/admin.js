@@ -280,13 +280,282 @@ router.patch("/users/:id/status", isAdmin, (req, res) => {
 // Endpoint untuk mendapatkan semua data heatmap
 // GET /api/admin/heatmap
 router.get("/heatmap", isAdmin, (req, res) => {
-  const query = "SELECT * FROM heatmap";
+  const query = "SELECT * FROM heatmap ORDER BY mapid DESC";
   db.query(query, (err, results) => {
-    if (err)
-      return res
-        .status(500)
-        .json({ error: "Kesalahan server saat mengambil data heatmap." });
-    res.json(results);
+    if (err) {
+      console.error("Error fetching heatmap data:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat mengambil data heatmap.",
+      });
+    }
+    res.json({
+      success: true,
+      data: results,
+      message: "Data heatmap berhasil diambil",
+    });
+  });
+});
+
+// Endpoint untuk menambah lokasi heatmap baru (manual input)
+// POST /api/admin/heatmap/upload
+router.post("/heatmap/upload", isAdmin, (req, res) => {
+  const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
+
+  // Validate required fields
+  if (!nama_lokasi || !latitude || !longitude || !gmaps_url) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "Semua field (nama_lokasi, latitude, longitude, gmaps_url) wajib diisi.",
+    });
+  }
+
+  // Validate latitude (-90 to 90)
+  if (latitude < -90 || latitude > 90) {
+    return res.status(400).json({
+      success: false,
+      error: "Latitude harus berada di antara -90 dan 90 derajat.",
+    });
+  }
+
+  // Validate longitude (-180 to 180)
+  if (longitude < -180 || longitude > 180) {
+    return res.status(400).json({
+      success: false,
+      error: "Longitude harus berada di antara -180 dan 180 derajat.",
+    });
+  }
+
+  // Insert new location
+  const query = `
+    INSERT INTO heatmap (nama_lokasi, latitude, longitude, gmaps_url, status)
+    VALUES (?, ?, ?, ?, 'aktif')
+  `;
+
+  db.query(
+    query,
+    [nama_lokasi, latitude, longitude, gmaps_url],
+    (err, result) => {
+      if (err) {
+        console.error("Error adding heatmap location:", err);
+        return res.status(500).json({
+          success: false,
+          error: "Kesalahan server saat menambah lokasi.",
+        });
+      }
+
+      res.status(201).json({
+        success: true,
+        message: "Lokasi berhasil ditambahkan",
+        data: {
+          mapid: result.insertId,
+          nama_lokasi,
+          latitude,
+          longitude,
+          gmaps_url,
+          status: "aktif",
+        },
+      });
+    }
+  );
+});
+
+// Endpoint untuk upload CSV heatmap locations
+// POST /api/admin/heatmap/upload-csv
+router.post(
+  "/heatmap/upload-csv",
+  isAdmin,
+  upload.single("file"),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "File CSV tidak ditemukan.",
+      });
+    }
+
+    const results = [];
+    fs.createReadStream(req.file.path)
+      .pipe(csv())
+      .on("data", (data) => results.push(data))
+      .on("end", () => {
+        // Validate and filter data
+        const validLocations = results.filter((row) => {
+          const lat = parseFloat(row.latitude);
+          const lng = parseFloat(row.longitude);
+          return (
+            row.nama_lokasi &&
+            row.nama_lokasi.trim() !== "" &&
+            !isNaN(lat) &&
+            lat >= -90 &&
+            lat <= 90 &&
+            !isNaN(lng) &&
+            lng >= -180 &&
+            lng <= 180 &&
+            row.gmaps_url &&
+            row.gmaps_url.trim() !== ""
+          );
+        });
+
+        if (validLocations.length === 0) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({
+            success: false,
+            error: "Tidak ada data lokasi yang valid dalam file CSV.",
+          });
+        }
+
+        // Prepare values for insertion
+        const values = validLocations.map((row) => [
+          row.nama_lokasi.trim(),
+          parseFloat(row.latitude),
+          parseFloat(row.longitude),
+          row.gmaps_url.trim(),
+          "aktif",
+        ]);
+
+        const query =
+          "INSERT INTO heatmap (nama_lokasi, latitude, longitude, gmaps_url, status) VALUES ?";
+        db.query(query, [values], (err, result) => {
+          fs.unlinkSync(req.file.path); // Remove temp file
+          if (err) {
+            console.error("Error importing heatmap locations:", err);
+            return res.status(500).json({
+              success: false,
+              error: "Gagal import data lokasi.",
+              detail: err.message,
+            });
+          }
+          res.json({
+            success: true,
+            message: `Import lokasi berhasil. ${result.affectedRows} lokasi ditambahkan.`,
+            data: { imported: result.affectedRows },
+          });
+        });
+      })
+      .on("error", (err) => {
+        fs.unlinkSync(req.file.path);
+        res.status(500).json({
+          success: false,
+          error: "Gagal membaca file CSV.",
+          detail: err.message,
+        });
+      });
+  }
+);
+
+// Endpoint untuk edit lokasi heatmap
+// PATCH /api/admin/heatmap/:mapid
+router.patch("/heatmap/:mapid", isAdmin, (req, res) => {
+  const { mapid } = req.params;
+  const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
+
+  // Validate required fields
+  if (!nama_lokasi || !latitude || !longitude || !gmaps_url) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "Semua field (nama_lokasi, latitude, longitude, gmaps_url) wajib diisi.",
+    });
+  }
+
+  // Validate latitude and longitude
+  if (latitude < -90 || latitude > 90) {
+    return res.status(400).json({
+      success: false,
+      error: "Latitude harus berada di antara -90 dan 90 derajat.",
+    });
+  }
+
+  if (longitude < -180 || longitude > 180) {
+    return res.status(400).json({
+      success: false,
+      error: "Longitude harus berada di antara -180 dan 180 derajat.",
+    });
+  }
+
+  const query = `
+    UPDATE heatmap 
+    SET nama_lokasi = ?, latitude = ?, longitude = ?, gmaps_url = ? 
+    WHERE mapid = ?
+  `;
+
+  db.query(
+    query,
+    [nama_lokasi, latitude, longitude, gmaps_url, mapid],
+    (err, results) => {
+      if (err) {
+        console.error("Error updating heatmap location:", err);
+        return res.status(500).json({
+          success: false,
+          error: "Kesalahan server saat mengubah lokasi.",
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Lokasi tidak ditemukan.",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Lokasi berhasil diperbarui.",
+      });
+    }
+  );
+});
+
+// Endpoint untuk menghapus lokasi heatmap
+// DELETE /api/admin/heatmap/:mapid
+router.delete("/heatmap/:mapid", isAdmin, (req, res) => {
+  const { mapid } = req.params;
+
+  // First check if there are crime data associated with this location
+  const checkQuery =
+    "SELECT COUNT(*) as count FROM data_kriminal WHERE mapid = ?";
+  db.query(checkQuery, [mapid], (err, results) => {
+    if (err) {
+      console.error("Error checking crime data:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat memeriksa data terkait.",
+      });
+    }
+
+    const crimeCount = results[0].count;
+    if (crimeCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Tidak dapat menghapus lokasi. Masih ada ${crimeCount} data kriminal yang terkait dengan lokasi ini.`,
+      });
+    }
+
+    // If no crime data, proceed with deletion
+    const deleteQuery = "DELETE FROM heatmap WHERE mapid = ?";
+    db.query(deleteQuery, [mapid], (err, results) => {
+      if (err) {
+        console.error("Error deleting heatmap location:", err);
+        return res.status(500).json({
+          success: false,
+          error: "Kesalahan server saat menghapus lokasi.",
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Lokasi tidak ditemukan.",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Lokasi berhasil dihapus.",
+      });
+    });
   });
 });
 
@@ -298,20 +567,124 @@ router.patch("/heatmap/:mapid/status", isAdmin, (req, res) => {
 
   // Validasi input status
   if (status !== "aktif" && status !== "mati") {
-    return res
-      .status(400)
-      .json({ error: "Status tidak valid. Gunakan 'aktif' atau 'mati'." });
+    return res.status(400).json({
+      success: false,
+      error: "Status tidak valid. Gunakan 'aktif' atau 'mati'.",
+    });
   }
 
   const query = "UPDATE heatmap SET status = ? WHERE mapid = ?";
   db.query(query, [status, mapid], (err, results) => {
-    if (err) return res.status(500).json({ error: "Kesalahan server." });
+    if (err) {
+      console.error("Error updating location status:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server.",
+      });
+    }
     if (results.affectedRows === 0) {
-      return res.status(404).json({ error: "Lokasi tidak ditemukan." });
+      return res.status(404).json({
+        success: false,
+        error: "Lokasi tidak ditemukan.",
+      });
     }
     res.json({
+      success: true,
       message: `Status lokasi dengan mapid ${mapid} berhasil diubah menjadi ${status}.`,
     });
+  });
+});
+
+// 3. FUNGSI MANAGE DATA KRIMINAL
+// Endpoint untuk mendapatkan semua data kriminal
+// GET /api/admin/kriminal
+router.get("/kriminal", isAdmin, (req, res) => {
+  const query = `
+    SELECT dk.*, h.nama_lokasi 
+    FROM data_kriminal dk 
+    LEFT JOIN heatmap h ON dk.mapid = h.mapid 
+    ORDER BY dk.waktu DESC
+  `;
+
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error("Error fetching crime data:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat mengambil data kriminal.",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: results,
+      message: "Data kriminal berhasil diambil",
+    });
+  });
+});
+
+// Endpoint untuk menambah data kriminal secara manual
+// POST /api/admin/kriminal/add
+router.post("/kriminal/add", isAdmin, (req, res) => {
+  const { mapid, jenis_kejahatan, waktu, deskripsi } = req.body;
+
+  // Validate required fields
+  if (!mapid || !jenis_kejahatan || !waktu) {
+    return res.status(400).json({
+      success: false,
+      error: "Field mapid, jenis_kejahatan, dan waktu wajib diisi.",
+    });
+  }
+
+  // Validate mapid exists
+  const checkLocationQuery = "SELECT mapid FROM heatmap WHERE mapid = ?";
+  db.query(checkLocationQuery, [mapid], (err, results) => {
+    if (err) {
+      console.error("Error checking location:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat memvalidasi lokasi.",
+      });
+    }
+
+    if (results.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Lokasi dengan mapid tersebut tidak ditemukan.",
+      });
+    }
+
+    // Insert crime data
+    const insertQuery = `
+      INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi)
+      VALUES (?, ?, ?, ?)
+    `;
+
+    db.query(
+      insertQuery,
+      [mapid, jenis_kejahatan, waktu, deskripsi || ""],
+      (err, result) => {
+        if (err) {
+          console.error("Error adding crime data:", err);
+          return res.status(500).json({
+            success: false,
+            error: "Kesalahan server saat menambah data kriminal.",
+          });
+        }
+
+        res.status(201).json({
+          success: true,
+          message: "Data kriminal berhasil ditambahkan",
+          data: {
+            id: result.insertId,
+            mapid,
+            jenis_kejahatan,
+            waktu,
+            deskripsi: deskripsi || "",
+          },
+        });
+      }
+    );
   });
 });
 
@@ -319,7 +692,10 @@ router.patch("/heatmap/:mapid/status", isAdmin, (req, res) => {
 // POST /api/admin/kriminal/upload
 router.post("/kriminal/upload", isAdmin, upload.single("file"), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: "File CSV tidak ditemukan." });
+    return res.status(400).json({
+      success: false,
+      error: "File CSV tidak ditemukan.",
+    });
   }
 
   const results = [];
@@ -328,38 +704,55 @@ router.post("/kriminal/upload", isAdmin, upload.single("file"), (req, res) => {
     .on("data", (data) => results.push(data))
     .on("end", () => {
       // Insert each row into data_kriminal
-      const values = results
-        .filter(
-          (row) =>
-            Number.isInteger(Number(row.mapid)) &&
-            typeof row.jenis_kejahatan === "string" &&
-            row.jenis_kejahatan.trim() !== "" &&
-            !isNaN(Date.parse(row.waktu))
-        )
-        .map((row) => [
-          parseInt(row.mapid, 10),
-          row.jenis_kejahatan.trim(),
-          isNaN(Date.parse(row.waktu)) ? null : new Date(row.waktu),
-          row.deskripsi || "",
-        ]);
+      const validRows = results.filter(
+        (row) =>
+          Number.isInteger(Number(row.mapid)) &&
+          typeof row.jenis_kejahatan === "string" &&
+          row.jenis_kejahatan.trim() !== "" &&
+          !isNaN(Date.parse(row.waktu))
+      );
+
+      if (validRows.length === 0) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          success: false,
+          error: "Tidak ada data kriminal yang valid dalam file CSV.",
+        });
+      }
+
+      const values = validRows.map((row) => [
+        parseInt(row.mapid, 10),
+        row.jenis_kejahatan.trim(),
+        isNaN(Date.parse(row.waktu)) ? null : new Date(row.waktu),
+        row.deskripsi || "",
+      ]);
+
       const query =
         "INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi) VALUES ?";
       db.query(query, [values], (err, result) => {
         fs.unlinkSync(req.file.path); // Remove temp file
         if (err) {
-          return res
-            .status(500)
-            .json({ error: "Gagal import data.", detail: err });
+          console.error("Error importing crime data:", err);
+          return res.status(500).json({
+            success: false,
+            error: "Gagal import data kriminal.",
+            detail: err.message,
+          });
         }
         res.json({
-          message: "Import data berhasil",
-          imported: result.affectedRows,
+          success: true,
+          message: `Import data kriminal berhasil. ${result.affectedRows} data ditambahkan.`,
+          data: { imported: result.affectedRows },
         });
       });
     })
     .on("error", (err) => {
       fs.unlinkSync(req.file.path);
-      res.status(500).json({ error: "Gagal membaca file CSV.", detail: err });
+      res.status(500).json({
+        success: false,
+        error: "Gagal membaca file CSV.",
+        detail: err.message,
+      });
     });
 });
 module.exports = router;
