@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (including dev dependencies for nodemon)
+RUN npm ci
 
 # Copy the rest of the application code
 COPY . .
@@ -17,7 +17,7 @@ COPY . .
 RUN mkdir -p uploads
 
 # Expose the port the app runs on
-EXPOSE 6000
+EXPOSE 8000
 
-# Define the command to run the application
-CMD ["npm", "start"] 
+# Define the command to run the application in development mode
+CMD ["npm", "run", "dev"] 

@@ -12,6 +12,15 @@ const app = express();
 app.use(express.json());
 
 app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+app.use(
   session({
     secret: process.env.SESSION_SECRET || "secrettoken",
     resave: false,
@@ -19,20 +28,11 @@ app.use(
     name: "sessionId",
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: false,
       sameSite: "lax",
-      maxAge: 1000 * 60 * 60 * 168,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+      path: "/",
     },
-  })
-);
-
-app.use(
-  cors({
-    origin: "http://localhost:3000",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-XSRF-TOKEN"],
-    exposedHeaders: ["set-cookie"],
   })
 );
 
