@@ -3,6 +3,7 @@ const session = require("express-session");
 const cors = require("cors");
 const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
+const managerRoutes = require("./routes/manager");
 const kriminalRoutes = require("./routes/kriminal");
 const chatbotRoutes = require("./routes/chatbot");
 require("dotenv").config();
@@ -38,6 +39,7 @@ app.use(
 
 app.use("/api", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/manager", managerRoutes);
 app.use("/api/kriminal", kriminalRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 

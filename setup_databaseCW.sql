@@ -58,6 +58,13 @@ INSERT INTO `user` (`id`, `nama`, `email`, `password`, `role`) VALUES
 (5, 'Fawwaz Akbar Wibowo', 'fawwaz.aw@example.com', 'password123', 'manager'),
 (6, 'Polisi Pariwisata DIY', 'polpar.diy@example.com', 'password123', 'polri');
 
+-- Mengisi tabel 'manager_details'
+INSERT INTO `manager_details` (`user_id`, `organization`, `location_url`) VALUES
+(2, 'Wisata Malioboro', 'https://maps.app.goo.gl/fogdpdpdStaskSkz5'),
+(3, 'Wisata Candi Prambanan', 'https://maps.app.goo.gl/jSVj35B4564SBjLV7'),
+(4, 'Wisata Alun-Alun Kidul', 'https://maps.app.goo.gl/5sdEdxKKYdhxUZkH8'),
+(5, 'Wisata Titik Nol', 'https://maps.app.goo.gl/PLa3bEhKqJXsmAv9');
+
 -- Mengisi tabel 'heatmap'
 INSERT INTO `heatmap` (`mapid`, `nama_lokasi`, `latitude`, `longitude`, `gmaps_url`, `status`) VALUES
 (1, 'Jalan Malioboro', -7.7924, 110.3659, 'https://maps.app.goo.gl/fogdpdpdStaskSkz5', 'aktif'),
