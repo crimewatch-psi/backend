@@ -15,12 +15,38 @@ const upload = multer({
 }); // Temporary upload folder (pastikan folder ini ada)
 
 router.post("/register-manager", isAdmin, async (req, res) => {
-  const { email, password, nama, organization, location } = req.body;
+  const { email, password, nama, organization, latitude, longitude } = req.body;
 
   if (!email || !password || !nama || !organization) {
     return res
       .status(400)
       .json({ error: "Email, password, nama, dan organization wajib diisi." });
+  }
+
+  // Validate latitude and longitude if provided
+  if ((latitude && !longitude) || (!latitude && longitude)) {
+    return res
+      .status(400)
+      .json({
+        error:
+          "Latitude dan longitude harus diisi bersamaan atau tidak sama sekali.",
+      });
+  }
+
+  if (latitude && (latitude < -90 || latitude > 90)) {
+    return res.status(400).json({ error: "Latitude harus antara -90 dan 90." });
+  }
+
+  if (longitude && (longitude < -180 || longitude > 180)) {
+    return res
+      .status(400)
+      .json({ error: "Longitude harus antara -180 dan 180." });
+  }
+
+  // Generate location URL in the format that can be processed by AI
+  let locationUrl = null;
+  if (latitude && longitude) {
+    locationUrl = `https://maps.google.com/@${latitude},${longitude}`;
   }
 
   try {
@@ -62,12 +88,18 @@ router.post("/register-manager", isAdmin, async (req, res) => {
 
               const userId = userResult.insertId;
 
-              // Insert manager details
+              // Insert manager details with latitude and longitude
               const insertManagerQuery =
-                "INSERT INTO manager_details (user_id, organization, location_url) VALUES (?, ?, ?)";
+                "INSERT INTO manager_details (user_id, organization, location_url, latitude, longitude) VALUES (?, ?, ?, ?, ?)";
               db.query(
                 insertManagerQuery,
-                [userId, organization, location || null],
+                [
+                  userId,
+                  organization,
+                  locationUrl,
+                  latitude || null,
+                  longitude || null,
+                ],
                 (err, managerResult) => {
                   if (err) {
                     return db.rollback(() => {
@@ -99,7 +131,9 @@ router.post("/register-manager", isAdmin, async (req, res) => {
                         role: "manager",
                         status: "aktif",
                         organization,
-                        location: location || null,
+                        location_url: locationUrl,
+                        latitude: latitude || null,
+                        longitude: longitude || null,
                       },
                     });
                   });

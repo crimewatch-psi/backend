@@ -51,11 +51,11 @@ router.get("/analytics", isManager, async (req, res) => {
     const userId = req.session.user.id;
 
     const managerQuery = `
-      SELECT md.organization, md.location_url, u.nama 
-      FROM manager_details md 
-      JOIN user u ON md.user_id = u.id 
-      WHERE md.user_id = ?
-    `;
+    SELECT md.organization, md.location_url, md.latitude, md.longitude, u.nama 
+    FROM manager_details md 
+    JOIN user u ON md.user_id = u.id 
+    WHERE md.user_id = ?
+  `;
 
     db.query(managerQuery, [userId], async (err, managerResults) => {
       if (err) {
@@ -74,13 +74,23 @@ router.get("/analytics", isManager, async (req, res) => {
       }
 
       const manager = managerResults[0];
-      const managerCoords = extractCoordinatesFromUrl(manager.location_url);
+      let managerCoords = null;
+
+      // Use database coordinates if available, otherwise try to parse from URL
+      if (manager.latitude && manager.longitude) {
+        managerCoords = {
+          latitude: manager.latitude,
+          longitude: manager.longitude,
+        };
+      } else {
+        managerCoords = extractCoordinatesFromUrl(manager.location_url);
+      }
 
       if (!managerCoords) {
         return res.status(400).json({
           success: false,
           error:
-            "Koordinat lokasi bisnis tidak valid. Pastikan URL Google Maps sudah benar.",
+            "Koordinat lokasi bisnis tidak valid. Pastikan latitude dan longitude sudah tersimpan di database atau URL Google Maps sudah benar.",
         });
       }
 
