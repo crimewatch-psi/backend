@@ -6,6 +6,8 @@ const adminRoutes = require("./routes/admin");
 const managerRoutes = require("./routes/manager");
 const kriminalRoutes = require("./routes/kriminal");
 const chatbotRoutes = require("./routes/chatbot");
+const publicRoutes = require("./routes/public");
+const publicAiRoutes = require("./routes/public-ai");
 require("dotenv").config();
 
 const app = express();
@@ -42,6 +44,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/manager", managerRoutes);
 app.use("/api/kriminal", kriminalRoutes);
 app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/public", publicRoutes);
+app.use("/api/public-ai", publicAiRoutes);
 
 app.get("/api/session", (req, res) => {
   if (req.session.user) {

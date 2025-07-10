@@ -43,7 +43,7 @@ router.post("/", async (req, res) => {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", // Using a stable model version
+        model: "gpt-4.1",
         messages: [
           {
             role: "system",
