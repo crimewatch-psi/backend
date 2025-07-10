@@ -116,6 +116,14 @@ router.post("/login", async (req, res) => {
 
     req.session.user = sanitizedUser;
 
+    console.log("Session created:", {
+      sessionId: req.sessionID,
+      user: sanitizedUser,
+      nodeEnv: process.env.NODE_ENV,
+      cookies: req.headers.cookie,
+      origin: req.headers.origin
+    });
+
     res.json({
       message: "Login berhasil",
       user: sanitizedUser,
