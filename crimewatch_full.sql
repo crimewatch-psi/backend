@@ -141,13 +141,13 @@ UNLOCK TABLES;
 /*!50003 SET collation_connection  = latin1_swedish_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
+-- DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`crimewatch_user`@`%`*/ /*!50003 TRIGGER `update_last_login` BEFORE UPDATE ON `user` FOR EACH ROW BEGIN
     IF NEW.status = 'aktif' AND OLD.status = 'aktif' THEN
         SET NEW.last_login = CURRENT_TIMESTAMP;
     END IF;
 END */;;
-DELIMITER ;
+-- DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
