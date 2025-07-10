@@ -60,6 +60,15 @@ app.get("/api/session", (req, res) => {
   }
 });
 
-app.listen(8000, () => {
-  console.log("Server berjalan di http://localhost:8000");
+const port = process.env.PORT || 8000;
+const dbConfig = {
+  host: process.env.MYSQLHOST || process.env.DB_HOST || "localhost",
+  user: process.env.MYSQLUSER || process.env.DB_USER || "root",
+  password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || "",
+  database: process.env.MYSQLDATABASE || process.env.DB_NAME || "crimewatch",
+  port: process.env.MYSQLPORT || 3306,
+};
+
+app.listen(port, () => {
+  console.log(`Server berjalan di http://localhost:${port}`);
 });
