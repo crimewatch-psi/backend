@@ -4,6 +4,7 @@ const path = require("path");
 require("dotenv").config();
 
 const connection = mysql.createConnection({
+  url: process.env.MYSQLURL,
   host: process.env.MYSQLHOST,
   port: process.env.MYSQLPORT,
   user: process.env.MYSQLUSER,
@@ -18,9 +19,18 @@ connection.connect((err) => {
     return;
   }
   console.log("Connected to database.");
+
   const sqlFile = path.join(__dirname, "crimewatch_full.sql");
   try {
-    const sql = fs.readFileSync(sqlFile, "utf8");
+    let sql = fs.readFileSync(sqlFile, "utf8");
+
+    sql = sql
+      .replace(/DELIMITER.*\n/g, "")
+      .replace(/\$\$/g, ";")
+      .replace(/;;\n/g, ";")
+      .replace(/\/\*.*?\*\//gs, "")
+      .replace(/--.*\n/g, "\n");
+
     connection.query(sql, (err, results) => {
       if (err) {
         console.error("Error initializing database schema:", err);
