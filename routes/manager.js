@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db");
+const supabase = require("../db");
 const { isManager } = require("../middleware/managerauth");
 const OpenAI = require("openai");
 
@@ -50,30 +50,45 @@ router.get("/analytics", isManager, async (req, res) => {
   try {
     const userId = req.session.user.id;
 
-    const managerQuery = `
-    SELECT md.organization, md.location_url, md.latitude, md.longitude, u.nama 
-    FROM manager_details md 
-    JOIN user u ON md.user_id = u.id 
-    WHERE md.user_id = ?
-  `;
+    // Fetch manager details with join using Supabase
+    try {
+      const { data: managerResults, error: managerError } = await supabase
+        .from('manager_details')
+        .select(`
+          organization,
+          location_url,
+          latitude,
+          longitude,
+          user!inner(
+            nama
+          )
+        `)
+        .eq('user_id', userId)
+        .single();
 
-    db.query(managerQuery, [userId], async (err, managerResults) => {
-      if (err) {
-        console.error("Error fetching manager details:", err);
+      if (managerError) {
+        console.error("Error fetching manager details:", managerError);
         return res.status(500).json({
           success: false,
           error: "Gagal mengambil detail manajer.",
         });
       }
 
-      if (managerResults.length === 0) {
+      if (!managerResults) {
         return res.status(404).json({
           success: false,
           error: "Detail manajer tidak ditemukan.",
         });
       }
 
-      const manager = managerResults[0];
+      // Flatten the user data from the join
+      const manager = {
+        organization: managerResults.organization,
+        location_url: managerResults.location_url,
+        latitude: managerResults.latitude,
+        longitude: managerResults.longitude,
+        nama: managerResults.user.nama
+      };
       let managerCoords = null;
 
       // Use database coordinates if available, otherwise try to parse from URL
@@ -94,54 +109,66 @@ router.get("/analytics", isManager, async (req, res) => {
         });
       }
 
-      const criminalQuery = `
-        SELECT h.mapid, h.nama_lokasi, h.latitude, h.longitude,
-               dk.id as crime_id, dk.jenis_kejahatan, dk.waktu, dk.deskripsi
-        FROM heatmap h
-        LEFT JOIN data_kriminal dk ON h.mapid = dk.mapid
-        WHERE h.status = 'aktif'
-        ORDER BY dk.waktu DESC
-      `;
+      // Fetch crime data with left join using Supabase
+      const { data: crimeResults, error: crimeError } = await supabase
+        .from('heatmap')
+        .select(`
+          mapid,
+          nama_lokasi,
+          latitude,
+          longitude,
+          data_kriminal(
+            id,
+            jenis_kejahatan,
+            waktu,
+            deskripsi
+          )
+        `)
+        .eq('status', 'aktif')
+        .order('waktu', { ascending: false, referencedTable: 'data_kriminal' });
 
-      db.query(criminalQuery, async (err, crimeResults) => {
-        if (err) {
-          console.error("Error fetching crime data:", err);
-          return res.status(500).json({
-            success: false,
-            error: "Gagal mengambil data kriminal.",
-          });
-        }
+      if (crimeError) {
+        console.error("Error fetching crime data:", crimeError);
+        return res.status(500).json({
+          success: false,
+          error: "Gagal mengambil data kriminal.",
+        });
+      }
 
         const nearbyLocations = [];
         const nearbyLocationMap = new Map();
 
-        crimeResults.forEach((row) => {
+        // Process Supabase results - note that data_kriminal is an array due to the relationship
+        crimeResults.forEach((location) => {
           const distance = calculateDistance(
             managerCoords.latitude,
             managerCoords.longitude,
-            row.latitude,
-            row.longitude
+            location.latitude,
+            location.longitude
           );
 
           if (distance <= 20) {
-            if (!nearbyLocationMap.has(row.mapid)) {
-              nearbyLocationMap.set(row.mapid, {
-                mapid: row.mapid,
-                nama_lokasi: row.nama_lokasi,
-                latitude: row.latitude,
-                longitude: row.longitude,
+            if (!nearbyLocationMap.has(location.mapid)) {
+              nearbyLocationMap.set(location.mapid, {
+                mapid: location.mapid,
+                nama_lokasi: location.nama_lokasi,
+                latitude: location.latitude,
+                longitude: location.longitude,
                 distance: Math.round(distance * 100) / 100, // Round to 2 decimal places
                 crimes: [],
               });
-              nearbyLocations.push(nearbyLocationMap.get(row.mapid));
+              nearbyLocations.push(nearbyLocationMap.get(location.mapid));
             }
 
-            if (row.crime_id) {
-              nearbyLocationMap.get(row.mapid).crimes.push({
-                id: row.crime_id,
-                jenis_kejahatan: row.jenis_kejahatan,
-                waktu: row.waktu,
-                deskripsi: row.deskripsi,
+            // Process crimes for this location (data_kriminal is an array)
+            if (location.data_kriminal && location.data_kriminal.length > 0) {
+              location.data_kriminal.forEach((crime) => {
+                nearbyLocationMap.get(location.mapid).crimes.push({
+                  id: crime.id,
+                  jenis_kejahatan: crime.jenis_kejahatan,
+                  waktu: crime.waktu,
+                  deskripsi: crime.deskripsi,
+                });
               });
             }
           }
@@ -369,8 +396,13 @@ Lokasi terdekat dengan aktivitas kriminal adalah ${
             },
           });
         }
+    } catch (crimeError) {
+      console.error("Error in crime data processing:", crimeError);
+      return res.status(500).json({
+        success: false,
+        error: "Gagal memproses data kriminal.",
       });
-    });
+    }
   } catch (error) {
     console.error("Error in analytics endpoint:", error);
     res.status(500).json({
@@ -380,37 +412,58 @@ Lokasi terdekat dengan aktivitas kriminal adalah ${
   }
 });
 
-router.get("/profile", isManager, (req, res) => {
-  const userId = req.session.user.id;
+router.get("/profile", isManager, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
 
-  const query = `
-    SELECT u.nama, u.email, md.organization, md.location_url
-    FROM user u
-    JOIN manager_details md ON u.id = md.user_id
-    WHERE u.id = ?
-  `;
+    // Fetch manager profile with join using Supabase
+    const { data: profileData, error: profileError } = await supabase
+      .from('user')
+      .select(`
+        nama,
+        email,
+        manager_details!inner(
+          organization,
+          location_url
+        )
+      `)
+      .eq('id', userId)
+      .single();
 
-  db.query(query, [userId], (err, results) => {
-    if (err) {
-      console.error("Error fetching manager profile:", err);
+    if (profileError) {
+      console.error("Error fetching manager profile:", profileError);
       return res.status(500).json({
         success: false,
         error: "Gagal mengambil profil manajer.",
       });
     }
 
-    if (results.length === 0) {
+    if (!profileData) {
       return res.status(404).json({
         success: false,
         error: "Profil manajer tidak ditemukan.",
       });
     }
 
+    // Flatten the response structure
+    const flattenedData = {
+      nama: profileData.nama,
+      email: profileData.email,
+      organization: profileData.manager_details.organization,
+      location_url: profileData.manager_details.location_url
+    };
+
     res.json({
       success: true,
-      data: results[0],
+      data: flattenedData,
     });
-  });
+  } catch (error) {
+    console.error("Error in profile endpoint:", error);
+    res.status(500).json({
+      success: false,
+      error: "Terjadi kesalahan saat mengambil profil manajer.",
+    });
+  }
 });
 
 module.exports = router;

@@ -50,105 +50,89 @@ router.post("/register-manager", isAdmin, async (req, res) => {
   }
 
   try {
-    const checkQuery = "SELECT * FROM user WHERE email = ?";
-    db.query(checkQuery, [email], async (err, results) => {
-      if (err) {
-        console.error("Error checking existing user:", err);
-        return res.status(500).json({ error: "Kesalahan server." });
+    // Check if user already exists
+    const { data: existingUser, error: checkError } = await db
+      .from('user')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+      console.error("Error checking existing user:", checkError);
+      return res.status(500).json({ error: "Kesalahan server." });
+    }
+
+    if (existingUser) {
+      return res.status(400).json({ error: "Email sudah terdaftar." });
+    }
+
+    try {
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+      // Supabase handles transactions automatically with RPC or multiple operations
+      // Insert user first
+      const { data: newUser, error: userError } = await db
+        .from('user')
+        .insert({
+          email,
+          password: hashedPassword,
+          nama,
+          role: 'manager',
+          status: 'aktif'
+        })
+        .select()
+        .single();
+
+      if (userError) {
+        console.error("Error creating user:", userError);
+        return res.status(500).json({ error: "Gagal membuat user baru." });
       }
 
-      if (results.length > 0) {
-        return res.status(400).json({ error: "Email sudah terdaftar." });
+      const userId = newUser.id;
+
+      // Insert manager details
+      const { data: managerDetails, error: managerError } = await db
+        .from('manager_details')
+        .insert({
+          user_id: userId,
+          organization,
+          location_url: locationUrl,
+          latitude: latitude || null,
+          longitude: longitude || null
+        })
+        .select()
+        .single();
+
+      if (managerError) {
+        // If manager details insertion fails, delete the user to maintain consistency
+        await db.from('user').delete().eq('id', userId);
+        console.error("Error creating manager details:", managerError);
+        return res.status(500).json({ error: "Gagal membuat detail manager." });
       }
 
-      try {
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      res.status(201).json({
+        success: true,
+        message: "Manager berhasil didaftarkan",
+        user: {
+          id: userId,
+          email,
+          nama,
+          role: "manager",
+          status: "aktif",
+          organization,
+          location_url: locationUrl,
+          latitude: latitude || null,
+          longitude: longitude || null,
+        },
+      });
 
-        // Start transaction
-        db.beginTransaction(async (err) => {
-          if (err) {
-            console.error("Error starting transaction:", err);
-            return res.status(500).json({ error: "Kesalahan server." });
-          }
-
-          // Insert user
-          const insertUserQuery =
-            "INSERT INTO user (email, password, nama, role, status) VALUES (?, ?, ?, 'manager', 'aktif')";
-          db.query(
-            insertUserQuery,
-            [email, hashedPassword, nama],
-            (err, userResult) => {
-              if (err) {
-                return db.rollback(() => {
-                  console.error("Error creating user:", err);
-                  res.status(500).json({ error: "Gagal membuat user baru." });
-                });
-              }
-
-              const userId = userResult.insertId;
-
-              // Insert manager details with latitude and longitude
-              const insertManagerQuery =
-                "INSERT INTO manager_details (user_id, organization, location_url, latitude, longitude) VALUES (?, ?, ?, ?, ?)";
-              db.query(
-                insertManagerQuery,
-                [
-                  userId,
-                  organization,
-                  locationUrl,
-                  latitude || null,
-                  longitude || null,
-                ],
-                (err, managerResult) => {
-                  if (err) {
-                    return db.rollback(() => {
-                      console.error("Error creating manager details:", err);
-                      res
-                        .status(500)
-                        .json({ error: "Gagal membuat detail manager." });
-                    });
-                  }
-
-                  // Commit transaction
-                  db.commit((err) => {
-                    if (err) {
-                      return db.rollback(() => {
-                        console.error("Error committing transaction:", err);
-                        res.status(500).json({
-                          error: "Kesalahan server saat menyimpan data.",
-                        });
-                      });
-                    }
-
-                    res.status(201).json({
-                      success: true,
-                      message: "Manager berhasil didaftarkan",
-                      user: {
-                        id: userId,
-                        email,
-                        nama,
-                        role: "manager",
-                        status: "aktif",
-                        organization,
-                        location_url: locationUrl,
-                        latitude: latitude || null,
-                        longitude: longitude || null,
-                      },
-                    });
-                  });
-                }
-              );
-            }
-          );
-        });
-      } catch (hashError) {
-        console.error("Error hashing password:", hashError);
-        res
-          .status(500)
-          .json({ error: "Kesalahan server saat mengenkripsi password." });
-      }
-    });
+    } catch (hashError) {
+      console.error("Error hashing password:", hashError);
+      res
+        .status(500)
+        .json({ error: "Kesalahan server saat mengenkripsi password." });
+    }
   } catch (error) {
     console.error("Error in manager registration:", error);
     res
@@ -159,111 +143,118 @@ router.post("/register-manager", isAdmin, async (req, res) => {
 // 1. FUNGSI MANAGE USER
 //mendapatkan semua data user (berguna untuk admin)
 // GET /api/admin/users
-router.get("/users", isAdmin, (req, res) => {
-  const query = `
-    SELECT 
-      u.id, 
-      u.nama as name, 
-      u.email, 
-      u.role, 
-      CASE 
-        WHEN u.status = 'aktif' THEN 'active'
-        WHEN u.status = 'nonaktif' THEN 'inactive'
-        ELSE u.status
-      END as status,
-      u.last_login,
-      md.organization,
-      md.location_url as location
-    FROM user u
-    INNER JOIN manager_details md ON u.id = md.user_id
-    WHERE u.role = 'manager'
-    ORDER BY u.id ASC
-  `;
+router.get("/users", isAdmin, async (req, res) => {
+  try {
+    const { data: users, error } = await db
+      .from('user')
+      .select(`
+        id,
+        nama,
+        email,
+        role,
+        status,
+        last_login,
+        manager_details!inner(organization, location_url)
+      `)
+      .eq('role', 'manager')
+      .order('id', { ascending: true });
 
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching users:", err);
+    if (error) {
+      console.error("Error fetching users:", error);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server saat mengambil data user.",
       });
     }
 
+    const transformedUsers = users.map(user => ({
+      id: user.id,
+      name: user.nama,
+      email: user.email,
+      role: user.role,
+      status: user.status === 'aktif' ? 'active' : 'inactive',
+      last_login: user.last_login,
+      organization: user.manager_details.organization,
+      location: user.manager_details.location_url
+    }));
+
     res.json({
       success: true,
-      users: results,
+      users: transformedUsers,
     });
-  });
+  } catch (error) {
+    console.error("Error in users endpoint:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat mengambil data user.",
+    });
+  }
 });
 
 //mengubah detail user (nama, email, organisasi, lokasi)
 // PATCH /api/admin/users/:id
-router.patch("/users/:id", isAdmin, (req, res) => {
+router.patch("/users/:id", isAdmin, async (req, res) => {
   const { id } = req.params;
   const { nama, email, organization, location } = req.body;
 
-  db.beginTransaction((err) => {
-    if (err) {
-      console.error("Error starting transaction:", err);
+  try {
+    // Update user information
+    const { data: userData, error: userError } = await db
+      .from('user')
+      .update({ nama, email })
+      .eq('id', id)
+      .select();
+
+    if (userError) {
+      console.error("Error updating user:", userError);
       return res.status(500).json({
         success: false,
-        error: "Kesalahan server saat memulai transaksi.",
+        error: "Kesalahan server saat mengubah data user.",
       });
     }
 
-    const userQuery = "UPDATE user SET nama = ?, email = ? WHERE id = ?";
-    db.query(userQuery, [nama, email, id], (err, userResults) => {
-      if (err) {
-        return db.rollback(() => {
-          console.error("Error updating user:", err);
-          res.status(500).json({
-            success: false,
-            error: "Kesalahan server saat mengubah data user.",
-          });
-        });
-      }
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "User tidak ditemukan.",
+      });
+    }
 
-      const managerQuery =
-        "UPDATE manager_details SET organization = ?, location_url = ? WHERE user_id = ?";
-      db.query(
-        managerQuery,
-        [organization, location, id],
-        (err, managerResults) => {
-          if (err) {
-            return db.rollback(() => {
-              console.error("Error updating manager details:", err);
-              res.status(500).json({
-                success: false,
-                error: "Kesalahan server saat mengubah detail manager.",
-              });
-            });
-          }
+    // Update manager details
+    const { data: managerData, error: managerError } = await db
+      .from('manager_details')
+      .update({ 
+        organization, 
+        location_url: location 
+      })
+      .eq('user_id', id)
+      .select();
 
-          db.commit((err) => {
-            if (err) {
-              return db.rollback(() => {
-                console.error("Error committing transaction:", err);
-                res.status(500).json({
-                  success: false,
-                  error: "Kesalahan server saat menyimpan perubahan.",
-                });
-              });
-            }
+    if (managerError) {
+      console.error("Error updating manager details:", managerError);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat mengubah detail manager.",
+      });
+    }
 
-            res.json({
-              success: true,
-              message: "Detail manager berhasil diubah.",
-            });
-          });
-        }
-      );
+    res.json({
+      success: true,
+      message: "Detail manager berhasil diubah.",
     });
-  });
+
+  } catch (error) {
+    console.error("Error in user update:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat menyimpan perubahan.",
+    });
+  }
 });
 
 //mengubah status user (aktif/nonaktif)
 // PATCH /api/admin/users/:id/status
-router.patch("/users/:id/status", isAdmin, (req, res) => {
+router.patch("/users/:id/status", isAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -288,52 +279,78 @@ router.patch("/users/:id/status", isAdmin, (req, res) => {
     });
   }
 
-  const query = "UPDATE user SET status = ? WHERE id = ?";
-  db.query(query, [backendStatus, id], (err, results) => {
-    if (err) {
-      console.error("Error updating user status:", err);
+  try {
+    const { data, error } = await db
+      .from('user')
+      .update({ status: backendStatus })
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      console.error("Error updating user status:", error);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server.",
       });
     }
-    if (results.affectedRows === 0) {
+
+    if (!data || data.length === 0) {
       return res.status(404).json({
         success: false,
         error: "User tidak ditemukan.",
       });
     }
+
     res.json({
       success: true,
       message: `Status user dengan ID ${id} berhasil diubah menjadi ${status}.`,
     });
-  });
+
+  } catch (error) {
+    console.error("Error updating user status:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server.",
+    });
+  }
 });
 
 // 2. FUNGSI MANAGE LOKASI (HEATMAP)
 // Endpoint untuk mendapatkan semua data heatmap
 // GET /api/admin/heatmap
-router.get("/heatmap", isAdmin, (req, res) => {
-  const query = "SELECT * FROM heatmap ORDER BY mapid DESC";
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching heatmap data:", err);
+router.get("/heatmap", isAdmin, async (req, res) => {
+  try {
+    const { data, error } = await db
+      .from('heatmap')
+      .select('*')
+      .order('mapid', { ascending: false });
+
+    if (error) {
+      console.error("Error fetching heatmap data:", error);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server saat mengambil data heatmap.",
       });
     }
+
     res.json({
       success: true,
-      data: results,
+      data: data,
       message: "Data heatmap berhasil diambil",
     });
-  });
+
+  } catch (error) {
+    console.error("Error fetching heatmap data:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat mengambil data heatmap.",
+    });
+  }
 });
 
 // Endpoint untuk menambah lokasi heatmap baru (manual input)
 // POST /api/admin/heatmap/upload
-router.post("/heatmap/upload", isAdmin, (req, res) => {
+router.post("/heatmap/upload", isAdmin, async (req, res) => {
   const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
 
   // Validate required fields
@@ -361,38 +378,48 @@ router.post("/heatmap/upload", isAdmin, (req, res) => {
     });
   }
 
-  // Insert new location
-  const query = `
-    INSERT INTO heatmap (nama_lokasi, latitude, longitude, gmaps_url, status)
-    VALUES (?, ?, ?, ?, 'aktif')
-  `;
+  try {
+    // Insert new location
+    const { data, error } = await db
+      .from('heatmap')
+      .insert({
+        nama_lokasi,
+        latitude,
+        longitude,
+        gmaps_url,
+        status: 'aktif'
+      })
+      .select()
+      .single();
 
-  db.query(
-    query,
-    [nama_lokasi, latitude, longitude, gmaps_url],
-    (err, result) => {
-      if (err) {
-        console.error("Error adding heatmap location:", err);
-        return res.status(500).json({
-          success: false,
-          error: "Kesalahan server saat menambah lokasi.",
-        });
-      }
-
-      res.status(201).json({
-        success: true,
-        message: "Lokasi berhasil ditambahkan",
-        data: {
-          mapid: result.insertId,
-          nama_lokasi,
-          latitude,
-          longitude,
-          gmaps_url,
-          status: "aktif",
-        },
+    if (error) {
+      console.error("Error adding heatmap location:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat menambah lokasi.",
       });
     }
-  );
+
+    res.status(201).json({
+      success: true,
+      message: "Lokasi berhasil ditambahkan",
+      data: {
+        mapid: data.mapid,
+        nama_lokasi,
+        latitude,
+        longitude,
+        gmaps_url,
+        status: "aktif",
+      },
+    });
+
+  } catch (error) {
+    console.error("Error adding heatmap location:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat menambah lokasi.",
+    });
+  }
 });
 
 // Endpoint untuk upload CSV heatmap locations
@@ -401,7 +428,7 @@ router.post(
   "/heatmap/upload-csv",
   isAdmin,
   upload.single("file"),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -413,60 +440,75 @@ router.post(
     fs.createReadStream(req.file.path)
       .pipe(csv())
       .on("data", (data) => results.push(data))
-      .on("end", () => {
-        // Validate and filter data
-        const validLocations = results.filter((row) => {
-          const lat = parseFloat(row.latitude);
-          const lng = parseFloat(row.longitude);
-          return (
-            row.nama_lokasi &&
-            row.nama_lokasi.trim() !== "" &&
-            !isNaN(lat) &&
-            lat >= -90 &&
-            lat <= 90 &&
-            !isNaN(lng) &&
-            lng >= -180 &&
-            lng <= 180 &&
-            row.gmaps_url &&
-            row.gmaps_url.trim() !== ""
-          );
-        });
-
-        if (validLocations.length === 0) {
-          fs.unlinkSync(req.file.path);
-          return res.status(400).json({
-            success: false,
-            error: "Tidak ada data lokasi yang valid dalam file CSV.",
+      .on("end", async () => {
+        try {
+          // Validate and filter data
+          const validLocations = results.filter((row) => {
+            const lat = parseFloat(row.latitude);
+            const lng = parseFloat(row.longitude);
+            return (
+              row.nama_lokasi &&
+              row.nama_lokasi.trim() !== "" &&
+              !isNaN(lat) &&
+              lat >= -90 &&
+              lat <= 90 &&
+              !isNaN(lng) &&
+              lng >= -180 &&
+              lng <= 180 &&
+              row.gmaps_url &&
+              row.gmaps_url.trim() !== ""
+            );
           });
-        }
 
-        // Prepare values for insertion
-        const values = validLocations.map((row) => [
-          row.nama_lokasi.trim(),
-          parseFloat(row.latitude),
-          parseFloat(row.longitude),
-          row.gmaps_url.trim(),
-          "aktif",
-        ]);
+          if (validLocations.length === 0) {
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({
+              success: false,
+              error: "Tidak ada data lokasi yang valid dalam file CSV.",
+            });
+          }
 
-        const query =
-          "INSERT INTO heatmap (nama_lokasi, latitude, longitude, gmaps_url, status) VALUES ?";
-        db.query(query, [values], (err, result) => {
+          // Prepare data for insertion
+          const insertData = validLocations.map((row) => ({
+            nama_lokasi: row.nama_lokasi.trim(),
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            gmaps_url: row.gmaps_url.trim(),
+            status: "aktif",
+          }));
+
+          // Insert data using Supabase
+          const { data, error } = await db
+            .from('heatmap')
+            .insert(insertData)
+            .select();
+
           fs.unlinkSync(req.file.path); // Remove temp file
-          if (err) {
-            console.error("Error importing heatmap locations:", err);
+
+          if (error) {
+            console.error("Error importing heatmap locations:", error);
             return res.status(500).json({
               success: false,
               error: "Gagal import data lokasi.",
-              detail: err.message,
+              detail: error.message,
             });
           }
+
           res.json({
             success: true,
-            message: `Import lokasi berhasil. ${result.affectedRows} lokasi ditambahkan.`,
-            data: { imported: result.affectedRows },
+            message: `Import lokasi berhasil. ${data.length} lokasi ditambahkan.`,
+            data: { imported: data.length },
           });
-        });
+
+        } catch (error) {
+          fs.unlinkSync(req.file.path);
+          console.error("Error processing CSV:", error);
+          res.status(500).json({
+            success: false,
+            error: "Gagal memproses file CSV.",
+            detail: error.message,
+          });
+        }
       })
       .on("error", (err) => {
         fs.unlinkSync(req.file.path);
@@ -481,7 +523,7 @@ router.post(
 
 // Endpoint untuk edit lokasi heatmap
 // PATCH /api/admin/heatmap/:mapid
-router.patch("/heatmap/:mapid", isAdmin, (req, res) => {
+router.patch("/heatmap/:mapid", isAdmin, async (req, res) => {
   const { mapid } = req.params;
   const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
 
@@ -509,93 +551,113 @@ router.patch("/heatmap/:mapid", isAdmin, (req, res) => {
     });
   }
 
-  const query = `
-    UPDATE heatmap 
-    SET nama_lokasi = ?, latitude = ?, longitude = ?, gmaps_url = ? 
-    WHERE mapid = ?
-  `;
+  try {
+    const { data, error } = await db
+      .from('heatmap')
+      .update({
+        nama_lokasi,
+        latitude,
+        longitude,
+        gmaps_url
+      })
+      .eq('mapid', mapid)
+      .select();
 
-  db.query(
-    query,
-    [nama_lokasi, latitude, longitude, gmaps_url, mapid],
-    (err, results) => {
-      if (err) {
-        console.error("Error updating heatmap location:", err);
-        return res.status(500).json({
-          success: false,
-          error: "Kesalahan server saat mengubah lokasi.",
-        });
-      }
-
-      if (results.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          error: "Lokasi tidak ditemukan.",
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Lokasi berhasil diperbarui.",
+    if (error) {
+      console.error("Error updating heatmap location:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat mengubah lokasi.",
       });
     }
-  );
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Lokasi tidak ditemukan.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Lokasi berhasil diperbarui.",
+    });
+
+  } catch (error) {
+    console.error("Error updating heatmap location:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat mengubah lokasi.",
+    });
+  }
 });
 
 // Endpoint untuk menghapus lokasi heatmap
 // DELETE /api/admin/heatmap/:mapid
-router.delete("/heatmap/:mapid", isAdmin, (req, res) => {
+router.delete("/heatmap/:mapid", isAdmin, async (req, res) => {
   const { mapid } = req.params;
 
-  // First check if there are crime data associated with this location
-  const checkQuery =
-    "SELECT COUNT(*) as count FROM data_kriminal WHERE mapid = ?";
-  db.query(checkQuery, [mapid], (err, results) => {
-    if (err) {
-      console.error("Error checking crime data:", err);
+  try {
+    // First check if there are crime data associated with this location
+    const { count, error: countError } = await db
+      .from('data_kriminal')
+      .select('*', { count: 'exact', head: true })
+      .eq('mapid', mapid);
+
+    if (countError) {
+      console.error("Error checking crime data:", countError);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server saat memeriksa data terkait.",
       });
     }
 
-    const crimeCount = results[0].count;
-    if (crimeCount > 0) {
+    if (count > 0) {
       return res.status(400).json({
         success: false,
-        error: `Tidak dapat menghapus lokasi. Masih ada ${crimeCount} data kriminal yang terkait dengan lokasi ini.`,
+        error: `Tidak dapat menghapus lokasi. Masih ada ${count} data kriminal yang terkait dengan lokasi ini.`,
       });
     }
 
     // If no crime data, proceed with deletion
-    const deleteQuery = "DELETE FROM heatmap WHERE mapid = ?";
-    db.query(deleteQuery, [mapid], (err, results) => {
-      if (err) {
-        console.error("Error deleting heatmap location:", err);
-        return res.status(500).json({
-          success: false,
-          error: "Kesalahan server saat menghapus lokasi.",
-        });
-      }
+    const { data, error } = await db
+      .from('heatmap')
+      .delete()
+      .eq('mapid', mapid)
+      .select();
 
-      if (results.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          error: "Lokasi tidak ditemukan.",
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Lokasi berhasil dihapus.",
+    if (error) {
+      console.error("Error deleting heatmap location:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat menghapus lokasi.",
       });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Lokasi tidak ditemukan.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Lokasi berhasil dihapus.",
     });
-  });
+
+  } catch (error) {
+    console.error("Error deleting heatmap location:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat menghapus lokasi.",
+    });
+  }
 });
 
 // Endpoint untuk mengubah status lokasi (aktif/mati)
 // PATCH /api/admin/heatmap/:mapid/status
-router.patch("/heatmap/:mapid/status", isAdmin, (req, res) => {
+router.patch("/heatmap/:mapid/status", isAdmin, async (req, res) => {
   const { mapid } = req.params;
   const { status } = req.body;
 
@@ -607,59 +669,87 @@ router.patch("/heatmap/:mapid/status", isAdmin, (req, res) => {
     });
   }
 
-  const query = "UPDATE heatmap SET status = ? WHERE mapid = ?";
-  db.query(query, [status, mapid], (err, results) => {
-    if (err) {
-      console.error("Error updating location status:", err);
+  try {
+    const { data, error } = await db
+      .from('heatmap')
+      .update({ status })
+      .eq('mapid', mapid)
+      .select();
+
+    if (error) {
+      console.error("Error updating location status:", error);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server.",
       });
     }
-    if (results.affectedRows === 0) {
+
+    if (!data || data.length === 0) {
       return res.status(404).json({
         success: false,
         error: "Lokasi tidak ditemukan.",
       });
     }
+
     res.json({
       success: true,
       message: `Status lokasi dengan mapid ${mapid} berhasil diubah menjadi ${status}.`,
     });
-  });
+
+  } catch (error) {
+    console.error("Error updating location status:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server.",
+    });
+  }
 });
 
 // 3. FUNGSI MANAGE DATA KRIMINAL
 // Endpoint untuk mendapatkan semua data kriminal
 // GET /api/admin/kriminal
-router.get("/kriminal", isAdmin, (req, res) => {
-  const query = `
-    SELECT dk.*, h.nama_lokasi 
-    FROM data_kriminal dk 
-    LEFT JOIN heatmap h ON dk.mapid = h.mapid 
-    ORDER BY dk.waktu DESC
-  `;
+router.get("/kriminal", isAdmin, async (req, res) => {
+  try {
+    const { data, error } = await db
+      .from('data_kriminal')
+      .select(`
+        *,
+        heatmap!inner(nama_lokasi)
+      `)
+      .order('waktu', { ascending: false });
 
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching crime data:", err);
+    if (error) {
+      console.error("Error fetching crime data:", error);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server saat mengambil data kriminal.",
       });
     }
 
+    // Transform data to match the previous structure
+    const transformedData = data.map(item => ({
+      ...item,
+      nama_lokasi: item.heatmap.nama_lokasi
+    }));
+
     res.json({
       success: true,
-      data: results,
+      data: transformedData,
       message: "Data kriminal berhasil diambil",
     });
-  });
+
+  } catch (error) {
+    console.error("Error fetching crime data:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat mengambil data kriminal.",
+    });
+  }
 });
 
 // Endpoint untuk menambah data kriminal secara manual
 // POST /api/admin/kriminal/add
-router.post("/kriminal/add", isAdmin, (req, res) => {
+router.post("/kriminal/add", isAdmin, async (req, res) => {
   const { mapid, jenis_kejahatan, waktu, deskripsi } = req.body;
 
   // Validate required fields
@@ -670,18 +760,23 @@ router.post("/kriminal/add", isAdmin, (req, res) => {
     });
   }
 
-  // Validate mapid exists
-  const checkLocationQuery = "SELECT mapid FROM heatmap WHERE mapid = ?";
-  db.query(checkLocationQuery, [mapid], (err, results) => {
-    if (err) {
-      console.error("Error checking location:", err);
+  try {
+    // Validate mapid exists
+    const { data: locationData, error: locationError } = await db
+      .from('heatmap')
+      .select('mapid')
+      .eq('mapid', mapid)
+      .single();
+
+    if (locationError && locationError.code !== 'PGRST116') {
+      console.error("Error checking location:", locationError);
       return res.status(500).json({
         success: false,
         error: "Kesalahan server saat memvalidasi lokasi.",
       });
     }
 
-    if (results.length === 0) {
+    if (!locationData) {
       return res.status(400).json({
         success: false,
         error: "Lokasi dengan mapid tersebut tidak ditemukan.",
@@ -689,42 +784,49 @@ router.post("/kriminal/add", isAdmin, (req, res) => {
     }
 
     // Insert crime data
-    const insertQuery = `
-      INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi)
-      VALUES (?, ?, ?, ?)
-    `;
+    const { data, error } = await db
+      .from('data_kriminal')
+      .insert({
+        mapid,
+        jenis_kejahatan,
+        waktu,
+        deskripsi: deskripsi || ""
+      })
+      .select()
+      .single();
 
-    db.query(
-      insertQuery,
-      [mapid, jenis_kejahatan, waktu, deskripsi || ""],
-      (err, result) => {
-        if (err) {
-          console.error("Error adding crime data:", err);
-          return res.status(500).json({
-            success: false,
-            error: "Kesalahan server saat menambah data kriminal.",
-          });
-        }
+    if (error) {
+      console.error("Error adding crime data:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Kesalahan server saat menambah data kriminal.",
+      });
+    }
 
-        res.status(201).json({
-          success: true,
-          message: "Data kriminal berhasil ditambahkan",
-          data: {
-            id: result.insertId,
-            mapid,
-            jenis_kejahatan,
-            waktu,
-            deskripsi: deskripsi || "",
-          },
-        });
-      }
-    );
-  });
+    res.status(201).json({
+      success: true,
+      message: "Data kriminal berhasil ditambahkan",
+      data: {
+        id: data.id,
+        mapid,
+        jenis_kejahatan,
+        waktu,
+        deskripsi: deskripsi || "",
+      },
+    });
+
+  } catch (error) {
+    console.error("Error adding crime data:", error);
+    res.status(500).json({
+      success: false,
+      error: "Kesalahan server saat menambah data kriminal.",
+    });
+  }
 });
 
 // Endpoint: Upload CSV and import data_kriminal
 // POST /api/admin/kriminal/upload
-router.post("/kriminal/upload", isAdmin, upload.single("file"), (req, res) => {
+router.post("/kriminal/upload", isAdmin, upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({
       success: false,
@@ -736,49 +838,65 @@ router.post("/kriminal/upload", isAdmin, upload.single("file"), (req, res) => {
   fs.createReadStream(req.file.path)
     .pipe(csv())
     .on("data", (data) => results.push(data))
-    .on("end", () => {
-      // Insert each row into data_kriminal
-      const validRows = results.filter(
-        (row) =>
-          Number.isInteger(Number(row.mapid)) &&
-          typeof row.jenis_kejahatan === "string" &&
-          row.jenis_kejahatan.trim() !== "" &&
-          !isNaN(Date.parse(row.waktu))
-      );
+    .on("end", async () => {
+      try {
+        // Filter and validate rows
+        const validRows = results.filter(
+          (row) =>
+            Number.isInteger(Number(row.mapid)) &&
+            typeof row.jenis_kejahatan === "string" &&
+            row.jenis_kejahatan.trim() !== "" &&
+            !isNaN(Date.parse(row.waktu))
+        );
 
-      if (validRows.length === 0) {
-        fs.unlinkSync(req.file.path);
-        return res.status(400).json({
-          success: false,
-          error: "Tidak ada data kriminal yang valid dalam file CSV.",
-        });
-      }
+        if (validRows.length === 0) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({
+            success: false,
+            error: "Tidak ada data kriminal yang valid dalam file CSV.",
+          });
+        }
 
-      const values = validRows.map((row) => [
-        parseInt(row.mapid, 10),
-        row.jenis_kejahatan.trim(),
-        isNaN(Date.parse(row.waktu)) ? null : new Date(row.waktu),
-        row.deskripsi || "",
-      ]);
+        // Prepare data for insertion
+        const insertData = validRows.map((row) => ({
+          mapid: parseInt(row.mapid, 10),
+          jenis_kejahatan: row.jenis_kejahatan.trim(),
+          waktu: isNaN(Date.parse(row.waktu)) ? null : new Date(row.waktu).toISOString(),
+          deskripsi: row.deskripsi || ""
+        }));
 
-      const query =
-        "INSERT INTO data_kriminal (mapid, jenis_kejahatan, waktu, deskripsi) VALUES ?";
-      db.query(query, [values], (err, result) => {
+        // Insert data using Supabase
+        const { data, error } = await db
+          .from('data_kriminal')
+          .insert(insertData)
+          .select();
+
         fs.unlinkSync(req.file.path); // Remove temp file
-        if (err) {
-          console.error("Error importing crime data:", err);
+
+        if (error) {
+          console.error("Error importing crime data:", error);
           return res.status(500).json({
             success: false,
             error: "Gagal import data kriminal.",
-            detail: err.message,
+            detail: error.message,
           });
         }
+
         res.json({
           success: true,
-          message: `Import data kriminal berhasil. ${result.affectedRows} data ditambahkan.`,
-          data: { imported: result.affectedRows },
+          message: `Import data kriminal berhasil. ${data.length} data ditambahkan.`,
+          data: { imported: data.length },
         });
-      });
+
+      } catch (error) {
+        fs.unlinkSync(req.file.path);
+        console.error("Error processing CSV:", error);
+        res.status(500).json({
+          success: false,
+          error: "Gagal memproses file CSV.",
+          detail: error.message,
+        });
+      }
     })
     .on("error", (err) => {
       fs.unlinkSync(req.file.path);

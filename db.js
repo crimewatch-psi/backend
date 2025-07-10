@@ -1,46 +1,11 @@
-const mysql = require("mysql2");
-const fs = require("fs");
-const path = require("path");
+const { createClient } = require('@supabase/supabase-js');
 require("dotenv").config();
 
-const connection = mysql.createConnection({
-  url: process.env.MYSQLURL,
-  host: process.env.MYSQLHOST,
-  port: process.env.MYSQLPORT,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  multipleStatements: false,
-});
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ROLE_KEY;
 
-connection.connect((err) => {
-  if (err) {
-    console.error("Database connection failed:", err.stack);
-    return;
-  }
-  console.log("Connected to database.");
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // const sqlFile = path.join(__dirname, "crimewatch_full.sql");
-  // try {
-  //   let sql = fs.readFileSync(sqlFile, "utf8");
+console.log("Connected to Supabase database.");
 
-  //   sql = sql
-  //     .replace(/DELIMITER.*\n/g, "")
-  //     .replace(/\$\$/g, ";")
-  //     .replace(/;;\n/g, ";")
-  //     .replace(/\/\*.*?\*\//gs, "")
-  //     .replace(/--.*\n/g, "\n");
-
-  //   connection.query(sql, (err, results) => {
-  //     if (err) {
-  //       console.error("Error initializing database schema:", err);
-  //       return;
-  //     }
-  //     console.log("Database schema initialized successfully");
-  //   });
-  // } catch (err) {
-  //   console.error("Error reading SQL file:", err);
-  // }
-});
-
-module.exports = connection;
+module.exports = supabase;

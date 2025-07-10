@@ -58,70 +58,74 @@ const SALT_ROUNDS = 10;
 //   }
 // });
 
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email dan password wajib diisi." });
   }
 
-  const query = "SELECT * FROM user WHERE email = ?";
-  db.query(query, [email], async (err, results) => {
-    if (err) {
-      console.error("Database error:", err);
+  try {
+    const { data: users, error } = await db
+      .from('user')
+      .select('*')
+      .eq('email', email);
+
+    if (error) {
+      console.error("Database error:", error);
       return res.status(500).json({ error: "Kesalahan server." });
     }
 
-    if (results.length === 0) {
+    if (!users || users.length === 0) {
       return res.status(401).json({ error: "Akun tidak ditemukan." });
     }
 
-    const user = results[0];
+    const user = users[0];
 
-    try {
-      let isPasswordValid = false;
+    let isPasswordValid = false;
 
-      if (user.password.startsWith("$2b$")) {
-        isPasswordValid = await bcrypt.compare(password, user.password);
-      } else {
-        isPasswordValid = password === user.password;
+    if (user.password.startsWith("$2b$")) {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } else {
+      isPasswordValid = password === user.password;
 
-        if (isPasswordValid) {
-          const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          const updateQuery = "UPDATE user SET password = ? WHERE id = ?";
-          db.query(updateQuery, [hashedPassword, user.id], (updateErr) => {
-            if (updateErr) {
-              console.error("Error updating password hash:", updateErr);
-            }
-          });
+      if (isPasswordValid) {
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+        const { error: updateError } = await db
+          .from('user')
+          .update({ password: hashedPassword })
+          .eq('id', user.id);
+
+        if (updateError) {
+          console.error("Error updating password hash:", updateError);
         }
       }
-
-      if (!isPasswordValid) {
-        return res.status(401).json({ error: "Password salah." });
-      }
-
-      const sanitizedUser = {
-        id: user.id,
-        nama: user.nama,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-      };
-
-      req.session.user = sanitizedUser;
-
-      res.json({
-        message: "Login berhasil",
-        user: sanitizedUser,
-      });
-    } catch (error) {
-      console.error("Error comparing passwords:", error);
-      return res
-        .status(500)
-        .json({ error: "Kesalahan server saat verifikasi password." });
     }
-  });
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Password salah." });
+    }
+
+    const sanitizedUser = {
+      id: user.id,
+      nama: user.nama,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    };
+
+    req.session.user = sanitizedUser;
+
+    res.json({
+      message: "Login berhasil",
+      user: sanitizedUser,
+    });
+  } catch (error) {
+    console.error("Error comparing passwords:", error);
+    return res
+      .status(500)
+      .json({ error: "Kesalahan server saat verifikasi password." });
+  }
 });
 
 router.post("/logout", (req, res) => {

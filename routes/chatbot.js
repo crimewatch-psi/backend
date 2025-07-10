@@ -24,18 +24,19 @@ router.post("/", async (req, res) => {
       .json({ error: "Pertanyaan terlalu panjang. Maksimal 500 karakter." });
   }
 
-  const query = `
-    SELECT id, mapid, jenis_kejahatan, waktu, deskripsi 
-    FROM data_kriminal 
-    WHERE mapid = ? 
-    ORDER BY waktu DESC 
-    LIMIT 100
-  `;
+  try {
+    const { data: results, error } = await db
+      .from('data_kriminal')
+      .select('id, mapid, jenis_kejahatan, waktu, deskripsi')
+      .eq('mapid', mapid)
+      .order('waktu', { ascending: false })
+      .limit(100);
 
-  db.query(query, [mapid], async (err, results) => {
-    if (err)
+    if (error) {
       return res.status(500).json({ error: "Gagal ambil data kriminal." });
-    if (results.length === 0) {
+    }
+
+    if (!results || results.length === 0) {
       return res
         .status(404)
         .json({ error: "Tidak ada data kriminal untuk lokasi ini." });
@@ -43,7 +44,7 @@ router.post("/", async (req, res) => {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: "gpt-4",
         messages: [
           {
             role: "system",
@@ -65,7 +66,10 @@ router.post("/", async (req, res) => {
       console.error(error);
       res.status(500).json({ error: "Gagal menghubungi OpenAI API." });
     }
-  });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Gagal ambil data kriminal." });
+  }
 });
 
 module.exports = router;
