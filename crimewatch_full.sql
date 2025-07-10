@@ -132,7 +132,7 @@ LOCK TABLES `user` WRITE;
 /*!40000 ALTER TABLE `user` DISABLE KEYS */;
 INSERT INTO `user` VALUES (1,'Afifuddin Mahfud','afifuddin.m@example.com','$2b$10$q9yobGnPDGb3lfty1CelOeXhU4LO8WtSdMZbuHjZfrO0UILblG9ZW','admin','aktif',NULL),(2,'Amelia Zakiya Sabrina','amelia.zs@example.com','$2b$10$laJwr8hPXLQuNO1.Qfj6iOofZFXTOfvxjKoEX7r6In.ytOkmEr0T.','manager','aktif',NULL),(3,'Arvindra Ahmad Ramadhan','arvindra.ar@example.com','$2b$10$3LzlYKSs3rS3iGyno.nL2.DCYHPIzs3UBE/LnpA4MvPTWhJtK4aTG','manager','aktif',NULL),(4,'Muhammad Radja Fikri Nafis','radja.fn@example.com','$2b$10$RKAc9d2kWgsGOiSQdIwvMeK4YPNG7MOloHk6UGHkGJz4Jb0GgxET2','manager','aktif',NULL),(5,'Fawwaz Akbar Wibowo','fawwaz.aw@example.com','$2b$10$QwGXICv3RmoD/V.qjwlaX.BFsxn9XTkXCwvfQT0HlSyvnUfPs/Ab.','manager','aktif',NULL),(6,'Polisi Pariwisata DIY','polpar.diy@example.com','$2b$10$pzjNrkKYcnGIJVtY9RaaxOBMxcXBtJIgXnvkB.Wxj6HJp/HTQGmAu','polri','aktif',NULL),(7,'Test User','test@example.com','$2b$10$LHjR7QGo.DNl.RDe/H82Nudkp7g/ZBw6PoyFmbkRO6saY0YbFjbeu','manager','aktif',NULL),(8,'Budi','budi@example.com','$2b$10$wuVHYoCiRagmDcj5AjYl.OP8IgNXmdi7984Pap7JEzTzOt3XMScQW','manager','aktif','2025-07-08 09:47:23'),(9,'Justin Bieber','justin@example.com','$2b$10$yHZTONJEwNLkdT6uVEZJI.ilgUktaWWZInucF7msqmZm6sIg9wfhm','manager','aktif','2025-07-08 13:37:22');
 /*!40000 ALTER TABLE `user` ENABLE KEYS */;
-UNLOCK TABLES;
+-- UNLOCK TABLES;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
 /*!50003 SET @saved_col_connection = @@collation_connection */ ;
