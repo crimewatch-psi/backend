@@ -16,7 +16,11 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://crimewatch-psi.vercel.app"],
+    origin: [
+      "http://localhost:3000",
+      "https://crimewatch-psi.vercel.app",
+      "https://crimewatch-ameliazsabrina-ameliazsabrinas-projects.vercel.app",
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -31,8 +35,8 @@ app.use(
     name: "sessionId",
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: false, // Temporarily disable for localhost testing
+      sameSite: "lax", // Use lax for localhost compatibility  
       maxAge: 1000 * 60 * 60 * 24 * 7,
       path: "/",
     },
@@ -48,6 +52,15 @@ app.use("/api/public", publicRoutes);
 app.use("/api/public-ai", publicAiRoutes);
 
 app.get("/api/session", (req, res) => {
+  console.log("Session check:", {
+    sessionId: req.sessionID,
+    hasSession: !!req.session.user,
+    user: req.session.user,
+    cookies: req.headers.cookie,
+    origin: req.headers.origin,
+    nodeEnv: process.env.NODE_ENV,
+  });
+
   if (req.session.user) {
     res.json({
       isAuthenticated: true,

@@ -26,10 +26,10 @@ router.post("/", async (req, res) => {
 
   try {
     const { data: results, error } = await db
-      .from('data_kriminal')
-      .select('id, mapid, jenis_kejahatan, waktu, deskripsi')
-      .eq('mapid', mapid)
-      .order('waktu', { ascending: false })
+      .from("data_kriminal")
+      .select("id, mapid, jenis_kejahatan, waktu, deskripsi")
+      .eq("mapid", mapid)
+      .order("waktu", { ascending: false })
       .limit(100);
 
     if (error) {
@@ -49,7 +49,7 @@ router.post("/", async (req, res) => {
           {
             role: "system",
             content:
-              `Anda adalah asisten keamanan cerdas. Anda diberi data JSON berisi daftar kejahatan terbaru (maksimal 100 kasus) pada satu lokasi wisata tertentu. Gunakan data ini sebagai referensi untuk menjawab pertanyaan berikut:\n\n` +
+              `Anda adalah asisten keamanan cerdas. Anda diberi data JSON berisi daftar kejahatan terbaru (maksimal 100 kasus) pada satu lokasi wisata tertentu. Jangan menggunakan istilah tech, seperti JSON. Pastikan Anda menggunakan bahasa yang mudah dipahami. Ambil data dari berita-berita kriminal terbaru di Daerah Istimewa Yogyakarta. Gunakan data ini sebagai referensi untuk menjawab pertanyaan berikut:\n\n` +
               `${JSON.stringify(results)}`,
           },
           {

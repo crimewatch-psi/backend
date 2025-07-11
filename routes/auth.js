@@ -121,7 +121,12 @@ router.post("/login", async (req, res) => {
       user: sanitizedUser,
       nodeEnv: process.env.NODE_ENV,
       cookies: req.headers.cookie,
-      origin: req.headers.origin
+      origin: req.headers.origin,
+      cookieSettings: {
+        secure: false,
+        sameSite: "lax",
+        httpOnly: true
+      }
     });
 
     res.json({
