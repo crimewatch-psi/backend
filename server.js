@@ -73,13 +73,28 @@ app.use((req, res, next) => {
 });
 
 // Configure session store based on environment
-const sessionStore =
-  process.env.NODE_ENV === "production"
-    ? new SupabaseSessionStore({
-        tableName: "sessions",
-        ttl: 1000 * 60 * 60 * 24 * 7, // 7 days
-      })
-    : undefined; // Use default MemoryStore for development
+let sessionStore;
+if (process.env.NODE_ENV === "production") {
+  try {
+    sessionStore = new SupabaseSessionStore({
+      tableName: "sessions",
+      ttl: 1000 * 60 * 60 * 24 * 7, // 7 days
+    });
+    
+    // Add error event handler
+    sessionStore.on('error', (error) => {
+      console.error('📦 Session store error:', error);
+    });
+    
+    console.log("✅ Supabase session store initialized successfully");
+  } catch (error) {
+    console.error("❌ Failed to initialize Supabase session store:", error);
+    console.log("🔄 Falling back to MemoryStore for now");
+    sessionStore = undefined;
+  }
+} else {
+  sessionStore = undefined; // Use default MemoryStore for development
+}
 
 app.use(
   session({
@@ -204,6 +219,30 @@ app.get("/api/debug/cors", (req, res) => {
     origin: req.headers.origin,
     corsAllowed: true,
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Debug endpoint to check session store
+app.get("/api/debug/session-store", (req, res) => {
+  console.log("🧪 SESSION STORE DEBUG:", {
+    hasSessionStore: !!sessionStore,
+    storeType: sessionStore ? sessionStore.constructor.name : 'MemoryStore',
+    nodeEnv: process.env.NODE_ENV,
+    supabaseUrl: process.env.SUPABASE_URL ? 'SET' : 'MISSING',
+    supabaseKey: process.env.SUPABASE_ROLE_KEY ? 'SET' : 'MISSING'
+  });
+  
+  res.json({
+    sessionStore: {
+      type: sessionStore ? sessionStore.constructor.name : 'MemoryStore',
+      configured: !!sessionStore,
+      environment: process.env.NODE_ENV
+    },
+    environment: {
+      supabaseUrl: process.env.SUPABASE_URL ? 'SET' : 'MISSING',
+      supabaseKey: process.env.SUPABASE_ROLE_KEY ? 'SET' : 'MISSING',
+      nodeEnv: process.env.NODE_ENV
+    }
   });
 });
 
