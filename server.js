@@ -22,7 +22,7 @@ const corsOptions = {
     const allowedOrigins = [
       "http://localhost:3000",
       "https://crimewatch-psi.vercel.app",
-      "https://crimewatch-bkpc2ynck-ameliazsabrinas-projects.vercel.app",
+      "https://crimewatch-3yyf5ii8f-ameliazsabrinas-projects.vercel.app",
       "https://crimewatch-2ffzso28w-ameliazsabrinas-projects.vercel.app",
     ];
 
@@ -80,12 +80,12 @@ if (process.env.NODE_ENV === "production") {
       tableName: "sessions",
       ttl: 1000 * 60 * 60 * 24 * 7, // 7 days
     });
-    
+
     // Add error event handler
-    sessionStore.on('error', (error) => {
-      console.error('📦 Session store error:', error);
+    sessionStore.on("error", (error) => {
+      console.error("📦 Session store error:", error);
     });
-    
+
     console.log("✅ Supabase session store initialized successfully");
   } catch (error) {
     console.error("❌ Failed to initialize Supabase session store:", error);
@@ -226,23 +226,23 @@ app.get("/api/debug/cors", (req, res) => {
 app.get("/api/debug/session-store", (req, res) => {
   console.log("🧪 SESSION STORE DEBUG:", {
     hasSessionStore: !!sessionStore,
-    storeType: sessionStore ? sessionStore.constructor.name : 'MemoryStore',
+    storeType: sessionStore ? sessionStore.constructor.name : "MemoryStore",
     nodeEnv: process.env.NODE_ENV,
-    supabaseUrl: process.env.SUPABASE_URL ? 'SET' : 'MISSING',
-    supabaseKey: process.env.SUPABASE_ROLE_KEY ? 'SET' : 'MISSING'
+    supabaseUrl: process.env.SUPABASE_URL ? "SET" : "MISSING",
+    supabaseKey: process.env.SUPABASE_ROLE_KEY ? "SET" : "MISSING",
   });
-  
+
   res.json({
     sessionStore: {
-      type: sessionStore ? sessionStore.constructor.name : 'MemoryStore',
+      type: sessionStore ? sessionStore.constructor.name : "MemoryStore",
       configured: !!sessionStore,
-      environment: process.env.NODE_ENV
+      environment: process.env.NODE_ENV,
     },
     environment: {
-      supabaseUrl: process.env.SUPABASE_URL ? 'SET' : 'MISSING',
-      supabaseKey: process.env.SUPABASE_ROLE_KEY ? 'SET' : 'MISSING',
-      nodeEnv: process.env.NODE_ENV
-    }
+      supabaseUrl: process.env.SUPABASE_URL ? "SET" : "MISSING",
+      supabaseKey: process.env.SUPABASE_ROLE_KEY ? "SET" : "MISSING",
+      nodeEnv: process.env.NODE_ENV,
+    },
   });
 });
 
