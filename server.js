@@ -19,7 +19,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "https://crimewatch-psi.vercel.app",
-      "https://crimewatch-ameliazsabrina-ameliazsabrinas-projects.vercel.app",
+      "https://crimewatch-bkpc2ynck-ameliazsabrinas-projects.vercel.app",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -36,7 +36,7 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: false, // Temporarily disable for localhost testing
-      sameSite: "lax", // Use lax for localhost compatibility  
+      sameSite: "lax", // Use lax for localhost compatibility
       maxAge: 1000 * 60 * 60 * 24 * 7,
       path: "/",
     },
