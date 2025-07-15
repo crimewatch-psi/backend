@@ -116,22 +116,42 @@ router.post("/login", async (req, res) => {
 
     req.session.user = sanitizedUser;
 
-    console.log("Session created:", {
-      sessionId: req.sessionID,
-      user: sanitizedUser,
-      nodeEnv: process.env.NODE_ENV,
-      cookies: req.headers.cookie,
-      origin: req.headers.origin,
-      cookieSettings: {
-        secure: false,
-        sameSite: "lax",
-        httpOnly: true
+    // Force session save to ensure cookie is set
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+        return res.status(500).json({ error: "Session save failed" });
       }
-    });
 
-    res.json({
-      message: "Login berhasil",
-      user: sanitizedUser,
+      console.log("🔐 LOGIN SESSION CREATED:", {
+        sessionId: req.sessionID,
+        user: sanitizedUser,
+        nodeEnv: process.env.NODE_ENV,
+        requestOrigin: req.headers.origin,
+        requestCookies: req.headers.cookie,
+        userAgent: req.headers['user-agent'],
+        cookieSettings: {
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          httpOnly: true,
+          path: '/',
+          maxAge: 1000 * 60 * 60 * 24 * 7
+        },
+        sessionStore: req.sessionStore ? 'EXISTS' : 'MISSING'
+      });
+
+      // Log what cookies will be sent in response
+      console.log("🍪 RESPONSE COOKIES TO BE SET:", {
+        sessionId: req.sessionID,
+        willSetCookie: true,
+        cookieName: 'sessionId',
+        cookieValue: req.sessionID
+      });
+
+      res.json({
+        message: "Login berhasil",
+        user: sanitizedUser,
+      });
     });
   } catch (error) {
     console.error("Error comparing passwords:", error);
