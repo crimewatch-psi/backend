@@ -1,20 +1,27 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const { isAdmin } = require("../middleware/adminauth");
-const bcrypt = require("bcrypt");
+const { verifyToken, requireAdmin } = require("../middleware/auth");
+const { createClient } = require('@supabase/supabase-js');
 const multer = require("multer");
 const csv = require("csv-parser");
 const fs = require("fs");
+const bcrypt = require("bcrypt");
+require('dotenv').config();
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
 const upload = multer({
   dest: "uploads/",
-  limits: { fileSize: 1 * 1024 * 1024 }, // file max 1 MB
-}); // Temporary upload folder (pastikan folder ini ada)
+  limits: { fileSize: 1 * 1024 * 1024 }
+});
 
-router.post("/register-manager", isAdmin, async (req, res) => {
+router.post("/register-manager", verifyToken, requireAdmin, async (req, res) => {
   const { email, password, nama, organization, latitude, longitude } = req.body;
 
   if (!email || !password || !nama || !organization) {
@@ -23,7 +30,6 @@ router.post("/register-manager", isAdmin, async (req, res) => {
       .json({ error: "Email, password, nama, dan organization wajib diisi." });
   }
 
-  // Validate latitude and longitude if provided
   if ((latitude && !longitude) || (!latitude && longitude)) {
     return res
       .status(400)
@@ -43,7 +49,6 @@ router.post("/register-manager", isAdmin, async (req, res) => {
       .json({ error: "Longitude harus antara -180 dan 180." });
   }
 
-  // Generate location URL in the format that can be processed by AI
   let locationUrl = null;
   if (latitude && longitude) {
     locationUrl = `https://maps.google.com/@${latitude},${longitude}`;
@@ -67,14 +72,33 @@ router.post("/register-manager", isAdmin, async (req, res) => {
     }
 
     try {
-      // Hash password
+      // First create user in Supabase Auth
+      const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          nama,
+          role: 'manager',
+          organization
+        }
+      });
+
+      if (authError) {
+        console.error("Error creating auth user:", authError);
+        return res.status(500).json({ error: "Gagal membuat user authentication." });
+      }
+
+      const authUserId = authUser.user.id;
+
+      // Hash password for local database
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-      // Supabase handles transactions automatically with RPC or multiple operations
-      // Insert user first
+      // Insert user in local database with auth_user_id reference
       const { data: newUser, error: userError } = await db
         .from('user')
         .insert({
+          auth_user_id: authUserId,
           email,
           password: hashedPassword,
           nama,
@@ -85,6 +109,8 @@ router.post("/register-manager", isAdmin, async (req, res) => {
         .single();
 
       if (userError) {
+        // Cleanup: delete auth user if database insertion fails
+        await supabase.auth.admin.deleteUser(authUserId);
         console.error("Error creating user:", userError);
         return res.status(500).json({ error: "Gagal membuat user baru." });
       }
@@ -105,7 +131,8 @@ router.post("/register-manager", isAdmin, async (req, res) => {
         .single();
 
       if (managerError) {
-        // If manager details insertion fails, delete the user to maintain consistency
+        // Cleanup: delete both auth user and database user if manager details insertion fails
+        await supabase.auth.admin.deleteUser(authUserId);
         await db.from('user').delete().eq('id', userId);
         console.error("Error creating manager details:", managerError);
         return res.status(500).json({ error: "Gagal membuat detail manager." });
@@ -143,7 +170,7 @@ router.post("/register-manager", isAdmin, async (req, res) => {
 // 1. FUNGSI MANAGE USER
 //mendapatkan semua data user (berguna untuk admin)
 // GET /api/admin/users
-router.get("/users", isAdmin, async (req, res) => {
+router.get("/users", verifyToken, requireAdmin, async (req, res) => {
   try {
     const { data: users, error } = await db
       .from('user')
@@ -193,7 +220,7 @@ router.get("/users", isAdmin, async (req, res) => {
 
 //mengubah detail user (nama, email, organisasi, lokasi)
 // PATCH /api/admin/users/:id
-router.patch("/users/:id", isAdmin, async (req, res) => {
+router.patch("/users/:id", verifyToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { nama, email, organization, location } = req.body;
 
@@ -254,7 +281,7 @@ router.patch("/users/:id", isAdmin, async (req, res) => {
 
 //mengubah status user (aktif/nonaktif)
 // PATCH /api/admin/users/:id/status
-router.patch("/users/:id/status", isAdmin, async (req, res) => {
+router.patch("/users/:id/status", verifyToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -318,7 +345,7 @@ router.patch("/users/:id/status", isAdmin, async (req, res) => {
 // 2. FUNGSI MANAGE LOKASI (HEATMAP)
 // Endpoint untuk mendapatkan semua data heatmap
 // GET /api/admin/heatmap
-router.get("/heatmap", isAdmin, async (req, res) => {
+router.get("/heatmap", verifyToken, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await db
       .from('heatmap')
@@ -350,7 +377,7 @@ router.get("/heatmap", isAdmin, async (req, res) => {
 
 // Endpoint untuk menambah lokasi heatmap baru (manual input)
 // POST /api/admin/heatmap/upload
-router.post("/heatmap/upload", isAdmin, async (req, res) => {
+router.post("/heatmap/upload", verifyToken, requireAdmin, async (req, res) => {
   const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
 
   // Validate required fields
@@ -426,7 +453,8 @@ router.post("/heatmap/upload", isAdmin, async (req, res) => {
 // POST /api/admin/heatmap/upload-csv
 router.post(
   "/heatmap/upload-csv",
-  isAdmin,
+  verifyToken,
+  requireAdmin,
   upload.single("file"),
   async (req, res) => {
     if (!req.file) {
@@ -523,7 +551,7 @@ router.post(
 
 // Endpoint untuk edit lokasi heatmap
 // PATCH /api/admin/heatmap/:mapid
-router.patch("/heatmap/:mapid", isAdmin, async (req, res) => {
+router.patch("/heatmap/:mapid", verifyToken, requireAdmin, async (req, res) => {
   const { mapid } = req.params;
   const { nama_lokasi, latitude, longitude, gmaps_url } = req.body;
 
@@ -594,7 +622,7 @@ router.patch("/heatmap/:mapid", isAdmin, async (req, res) => {
 
 // Endpoint untuk menghapus lokasi heatmap
 // DELETE /api/admin/heatmap/:mapid
-router.delete("/heatmap/:mapid", isAdmin, async (req, res) => {
+router.delete("/heatmap/:mapid", verifyToken, requireAdmin, async (req, res) => {
   const { mapid } = req.params;
 
   try {
@@ -657,7 +685,7 @@ router.delete("/heatmap/:mapid", isAdmin, async (req, res) => {
 
 // Endpoint untuk mengubah status lokasi (aktif/mati)
 // PATCH /api/admin/heatmap/:mapid/status
-router.patch("/heatmap/:mapid/status", isAdmin, async (req, res) => {
+router.patch("/heatmap/:mapid/status", verifyToken, requireAdmin, async (req, res) => {
   const { mapid } = req.params;
   const { status } = req.body;
 
@@ -708,7 +736,7 @@ router.patch("/heatmap/:mapid/status", isAdmin, async (req, res) => {
 // 3. FUNGSI MANAGE DATA KRIMINAL
 // Endpoint untuk mendapatkan semua data kriminal
 // GET /api/admin/kriminal
-router.get("/kriminal", isAdmin, async (req, res) => {
+router.get("/kriminal", verifyToken, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await db
       .from('data_kriminal')
@@ -749,7 +777,7 @@ router.get("/kriminal", isAdmin, async (req, res) => {
 
 // Endpoint untuk menambah data kriminal secara manual
 // POST /api/admin/kriminal/add
-router.post("/kriminal/add", isAdmin, async (req, res) => {
+router.post("/kriminal/add", verifyToken, requireAdmin, async (req, res) => {
   const { mapid, jenis_kejahatan, waktu, deskripsi } = req.body;
 
   // Validate required fields
@@ -826,7 +854,7 @@ router.post("/kriminal/add", isAdmin, async (req, res) => {
 
 // Endpoint: Upload CSV and import data_kriminal
 // POST /api/admin/kriminal/upload
-router.post("/kriminal/upload", isAdmin, upload.single("file"), async (req, res) => {
+router.post("/kriminal/upload", verifyToken, requireAdmin, upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({
       success: false,

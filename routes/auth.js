@@ -1,62 +1,62 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db");
-const bcrypt = require("bcrypt");
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
-const SALT_ROUNDS = 10;
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
-// router.post("/hash-passwords", async (req, res) => {
-//   try {
-//     const getUsersQuery = "SELECT id, password FROM user";
+// Session check endpoint for JWT token validation
+router.get("/session", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.json({ isAuthenticated: false });
+    }
 
-//     db.query(getUsersQuery, async (err, users) => {
-//       if (err) {
-//         console.error("Error fetching users:", err);
-//         return res.status(500).json({ error: "Database error" });
-//       }
+    const token = authHeader.substring(7);
+    
+    // Verify the JWT token with Supabase
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !user) {
+      return res.json({ isAuthenticated: false });
+    }
 
-//       let updateCount = 0;
+    // Get user data from users table
+    const serviceClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ROLE_KEY
+    );
+    
+    const { data: userData, error: userError } = await serviceClient
+      .from('user')
+      .select('id, email, nama, role, status')
+      .eq('email', user.email)
+      .single();
 
-//       for (const user of users) {
-//         if (!user.password.startsWith("$2b$")) {
-//           try {
-//             const hashedPassword = await bcrypt.hash(
-//               user.password,
-//               SALT_ROUNDS
-//             );
+    if (userError || !userData || (userData.status !== 'active' && userData.status !== 'aktif')) {
+      return res.json({ isAuthenticated: false });
+    }
 
-//             const updateQuery = "UPDATE user SET password = ? WHERE id = ?";
-//             await new Promise((resolve, reject) => {
-//               db.query(
-//                 updateQuery,
-//                 [hashedPassword, user.id],
-//                 (err, result) => {
-//                   if (err) reject(err);
-//                   else resolve(result);
-//                 }
-//               );
-//             });
-
-//             updateCount++;
-//           } catch (hashError) {
-//             console.error(
-//               `Error hashing password for user ${user.id}:`,
-//               hashError
-//             );
-//           }
-//         }
-//       }
-
-//       res.json({
-//         message: `Successfully hashed ${updateCount} passwords`,
-//         totalUsers: users.length,
-//       });
-//     });
-//   } catch (error) {
-//     console.error("Error in hash-passwords:", error);
-//     res.status(500).json({ error: "Server error" });
-//   }
-// });
+    res.json({
+      isAuthenticated: true,
+      user: {
+        id: userData.id,
+        nama: userData.nama,
+        email: userData.email,
+        role: userData.role,
+        status: userData.status
+      }
+    });
+  } catch (error) {
+    console.error("Session check error:", error);
+    res.json({ isAuthenticated: false });
+  }
+});
 
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -66,107 +66,83 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const { data: users, error } = await db
+
+    // Use Supabase Auth to sign in the user
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (authError) {
+      return res.status(401).json({ error: "Email atau password salah." });
+    }
+
+    if (!authData.user || !authData.session) {
+      return res.status(401).json({ error: "Login gagal." });
+    }
+
+    // Get user data from users table using service role client
+    const serviceClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ROLE_KEY
+    );
+    
+    const { data: userData, error: userError } = await serviceClient
       .from('user')
-      .select('*')
-      .eq('email', email);
+      .select('id, email, nama, role, status')
+      .eq('email', email)
+      .single();
 
-    if (error) {
-      console.error("Database error:", error);
-      return res.status(500).json({ error: "Kesalahan server." });
+    if (userError || !userData) {
+      return res.status(401).json({ error: "Data pengguna tidak ditemukan." });
     }
 
-    if (!users || users.length === 0) {
-      return res.status(401).json({ error: "Akun tidak ditemukan." });
-    }
-
-    const user = users[0];
-
-    let isPasswordValid = false;
-
-    if (user.password.startsWith("$2b$")) {
-      isPasswordValid = await bcrypt.compare(password, user.password);
-    } else {
-      isPasswordValid = password === user.password;
-
-      if (isPasswordValid) {
-        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-        const { error: updateError } = await db
-          .from('user')
-          .update({ password: hashedPassword })
-          .eq('id', user.id);
-
-        if (updateError) {
-          console.error("Error updating password hash:", updateError);
-        }
-      }
-    }
-
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: "Password salah." });
+    // Check if user is active (can be 'active' or 'aktif')
+    if (userData.status !== 'active' && userData.status !== 'aktif') {
+      return res.status(403).json({ error: "Akun tidak aktif. Hubungi administrator." });
     }
 
     const sanitizedUser = {
-      id: user.id,
-      nama: user.nama,
-      email: user.email,
-      role: user.role,
-      status: user.status,
+      id: userData.id,
+      nama: userData.nama,
+      email: userData.email,
+      role: userData.role,
+      status: userData.status
     };
 
-    req.session.user = sanitizedUser;
 
-    // Force session save to ensure cookie is set
-    req.session.save((err) => {
-      if (err) {
-        console.error("Session save error:", err);
-        return res.status(500).json({ error: "Session save failed" });
-      }
-
-      console.log("🔐 LOGIN SESSION CREATED:", {
-        sessionId: req.sessionID,
-        user: sanitizedUser,
-        nodeEnv: process.env.NODE_ENV,
-        requestOrigin: req.headers.origin,
-        requestCookies: req.headers.cookie,
-        userAgent: req.headers['user-agent'],
-        cookieSettings: {
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          httpOnly: true,
-          path: '/',
-          maxAge: 1000 * 60 * 60 * 24 * 7
-        },
-        sessionStore: req.sessionStore ? 'EXISTS' : 'MISSING'
-      });
-
-      // Log what cookies will be sent in response
-      console.log("🍪 RESPONSE COOKIES TO BE SET:", {
-        sessionId: req.sessionID,
-        willSetCookie: true,
-        cookieName: 'sessionId',
-        cookieValue: req.sessionID
-      });
-
-      res.json({
-        message: "Login berhasil",
-        user: sanitizedUser,
-      });
+    res.json({
+      message: "Login berhasil",
+      user: sanitizedUser,
+      token: authData.session.access_token,
+      refreshToken: authData.session.refresh_token
     });
   } catch (error) {
-    console.error("Error comparing passwords:", error);
-    return res
-      .status(500)
-      .json({ error: "Kesalahan server saat verifikasi password." });
+    console.error("Login error:", error);
+    return res.status(500).json({ error: "Kesalahan server." });
   }
 });
 
-router.post("/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) return res.status(500).json({ error: "Gagal logout" });
-    res.clearCookie("sessionId");
+router.post("/logout", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut(token);
+      
+      if (error) {
+        console.error("Supabase logout error:", error);
+      }
+    }
+
     res.json({ message: "Logout berhasil" });
-  });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ error: "Gagal logout" });
+  }
 });
 
 module.exports = router;

@@ -1,8 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../db");
-const { isManager } = require("../middleware/managerauth");
+const { verifyToken, requireManager } = require("../middleware/auth");
 const OpenAI = require("openai");
+const analyticsCache = require("../utils/cache");
+const Logger = require("../utils/logger");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -46,9 +48,12 @@ function extractCoordinatesFromUrl(url) {
   return null;
 }
 
-router.get("/analytics", isManager, async (req, res) => {
+router.get("/analytics", verifyToken, requireManager, async (req, res) => {
+  const startTime = Date.now();
+  
   try {
-    const userId = req.session.user.id;
+    const userId = req.user.id;
+    Logger.info("Analytics request started", { userId });
 
     // Fetch manager details with join using Supabase
     try {
@@ -109,7 +114,11 @@ router.get("/analytics", isManager, async (req, res) => {
         });
       }
 
-      // Fetch crime data with left join using Supabase
+      // Optimize: First get locations within reasonable geographic bounds
+      // This reduces the dataset before calculating exact distances
+      const latRange = 0.2; // Approximately 20km in latitude degrees
+      const lngRange = 0.2; // Approximately 20km in longitude degrees
+      
       const { data: crimeResults, error: crimeError } = await supabase
         .from('heatmap')
         .select(`
@@ -117,7 +126,7 @@ router.get("/analytics", isManager, async (req, res) => {
           nama_lokasi,
           latitude,
           longitude,
-          data_kriminal(
+          data_kriminal!left(
             id,
             jenis_kejahatan,
             waktu,
@@ -125,7 +134,12 @@ router.get("/analytics", isManager, async (req, res) => {
           )
         `)
         .eq('status', 'aktif')
-        .order('waktu', { ascending: false, referencedTable: 'data_kriminal' });
+        .gte('latitude', managerCoords.latitude - latRange)
+        .lte('latitude', managerCoords.latitude + latRange)
+        .gte('longitude', managerCoords.longitude - lngRange)
+        .lte('longitude', managerCoords.longitude + lngRange)
+        .order('waktu', { ascending: false, referencedTable: 'data_kriminal' })
+        .limit(100); // Limit locations to process
 
       if (crimeError) {
         console.error("Error fetching crime data:", crimeError);
@@ -137,9 +151,14 @@ router.get("/analytics", isManager, async (req, res) => {
 
         const nearbyLocations = [];
         const nearbyLocationMap = new Map();
+        let totalCrimesProcessed = 0;
+        const maxCrimesToProcess = 1000; // Limit crimes for performance
 
-        // Process Supabase results - note that data_kriminal is an array due to the relationship
-        crimeResults.forEach((location) => {
+        // Process Supabase results - optimized for performance
+        for (const location of crimeResults) {
+          // Skip if we've processed enough crimes
+          if (totalCrimesProcessed >= maxCrimesToProcess) break;
+          
           const distance = calculateDistance(
             managerCoords.latitude,
             managerCoords.longitude,
@@ -154,25 +173,29 @@ router.get("/analytics", isManager, async (req, res) => {
                 nama_lokasi: location.nama_lokasi,
                 latitude: location.latitude,
                 longitude: location.longitude,
-                distance: Math.round(distance * 100) / 100, // Round to 2 decimal places
+                distance: Math.round(distance * 100) / 100,
                 crimes: [],
               });
               nearbyLocations.push(nearbyLocationMap.get(location.mapid));
             }
 
-            // Process crimes for this location (data_kriminal is an array)
+            // Process crimes for this location with limit
             if (location.data_kriminal && location.data_kriminal.length > 0) {
-              location.data_kriminal.forEach((crime) => {
-                nearbyLocationMap.get(location.mapid).crimes.push({
-                  id: crime.id,
-                  jenis_kejahatan: crime.jenis_kejahatan,
-                  waktu: crime.waktu,
-                  deskripsi: crime.deskripsi,
-                });
+              const crimesToAdd = location.data_kriminal.slice(0, 50); // Max 50 crimes per location
+              crimesToAdd.forEach((crime) => {
+                if (totalCrimesProcessed < maxCrimesToProcess) {
+                  nearbyLocationMap.get(location.mapid).crimes.push({
+                    id: crime.id,
+                    jenis_kejahatan: crime.jenis_kejahatan,
+                    waktu: crime.waktu,
+                    deskripsi: crime.deskripsi,
+                  });
+                  totalCrimesProcessed++;
+                }
               });
             }
           }
-        });
+        }
 
         const allCrimes = nearbyLocations.flatMap(
           (location) => location.crimes
@@ -186,6 +209,7 @@ router.get("/analytics", isManager, async (req, res) => {
               manager_info: {
                 nama: manager.nama,
                 organization: manager.organization,
+                mapid: nearbyLocations[0]?.mapid || null,
                 coordinates: managerCoords,
               },
               crime_summary: {
@@ -239,6 +263,35 @@ router.get("/analytics", isManager, async (req, res) => {
             deskripsi: crime.deskripsi,
           })),
         };
+
+        // Check cache first
+        const dataHash = analyticsCache.hashCrimeData(dataForAI);
+        const cachedAnalysis = analyticsCache.get(userId, dataHash);
+        
+        if (cachedAnalysis) {
+          // Return cached result immediately
+          return res.json({
+            success: true,
+            data: {
+              manager_info: {
+                nama: manager.nama,
+                organization: manager.organization,
+                mapid: nearbyLocations[0]?.mapid || null,
+                coordinates: managerCoords,
+              },
+              crime_summary: {
+                total_crimes: totalCrimes,
+                nearby_locations: nearbyLocations,
+                crime_types: crimeTypes,
+                time_analysis: timeAnalysis,
+                radius_km: 20,
+                analysis_date: new Date().toISOString(),
+              },
+              ai_analysis: cachedAnalysis.ai_analysis,
+              recommendations: cachedAnalysis.recommendations,
+            },
+          });
+        }
 
         try {
           const aiResponse = await openai.chat.completions.create({
@@ -329,12 +382,20 @@ Data kriminal: ${JSON.stringify(dataForAI)}`,
               )
               .filter((line) => line.length > 10);
 
+          // Cache the AI analysis results
+          const analysisToCache = {
+            ai_analysis: parsedAiAnalysis,
+            recommendations: aiRecommendations,
+          };
+          analyticsCache.set(userId, dataHash, analysisToCache);
+
           res.json({
             success: true,
             data: {
               manager_info: {
                 nama: manager.nama,
                 organization: manager.organization,
+                mapid: nearbyLocations[0]?.mapid || null,
                 coordinates: managerCoords,
               },
               crime_summary: {
@@ -381,6 +442,7 @@ Lokasi terdekat dengan aktivitas kriminal adalah ${
               manager_info: {
                 nama: manager.nama,
                 organization: manager.organization,
+                mapid: nearbyLocations[0]?.mapid || null,
                 coordinates: managerCoords,
               },
               crime_summary: {
@@ -412,9 +474,100 @@ Lokasi terdekat dengan aktivitas kriminal adalah ${
   }
 });
 
-router.get("/profile", isManager, async (req, res) => {
+// Quick stats endpoint for faster initial load
+router.get("/analytics/quick", verifyToken, requireManager, async (req, res) => {
   try {
-    const userId = req.session.user.id;
+    const userId = req.user.id;
+
+    // Get manager basic info
+    const { data: managerResults, error: managerError } = await supabase
+      .from('manager_details')
+      .select(`
+        organization,
+        latitude,
+        longitude,
+        user!inner(nama)
+      `)
+      .eq('user_id', userId)
+      .single();
+
+    if (managerError || !managerResults) {
+      return res.status(404).json({
+        success: false,
+        error: "Detail manajer tidak ditemukan.",
+      });
+    }
+
+    const manager = {
+      organization: managerResults.organization,
+      latitude: managerResults.latitude,
+      longitude: managerResults.longitude,
+      nama: managerResults.user.nama
+    };
+
+    if (!manager.latitude || !manager.longitude) {
+      return res.status(400).json({
+        success: false,
+        error: "Koordinat lokasi tidak tersedia.",
+      });
+    }
+
+    // Get quick crime count within bounds
+    const latRange = 0.2;
+    const lngRange = 0.2;
+    
+    // Use RPC function or a simpler approach for quick stats
+    const quickStats = {
+      estimated_crimes: 0, // We'll calculate this differently
+      radius_km: 20,
+      last_updated: new Date().toISOString()
+    };
+
+    // For now, return basic structure - in production you'd want a database view or RPC
+    try {
+      const { count } = await supabase
+        .from('heatmap')
+        .select('*', { count: 'exact', head: true })
+        .gte('latitude', manager.latitude - latRange)
+        .lte('latitude', manager.latitude + latRange)
+        .gte('longitude', manager.longitude - lngRange)
+        .lte('longitude', manager.longitude + lngRange)
+        .eq('status', 'aktif');
+      
+      quickStats.estimated_crimes = (count || 0) * 10; // Rough estimate
+    } catch (error) {
+      console.error("Quick count error:", error);
+    }
+
+    const responseData = {
+      manager_info: {
+        nama: manager.nama,
+        organization: manager.organization,
+        coordinates: {
+          latitude: manager.latitude,
+          longitude: manager.longitude
+        }
+      },
+      quick_stats: quickStats
+    };
+
+    res.json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (error) {
+    console.error("Error fetching quick analytics:", error);
+    res.status(500).json({
+      success: false,
+      error: "Gagal mengambil statistik cepat."
+    });
+  }
+});
+
+router.get("/profile", verifyToken, requireManager, async (req, res) => {
+  try {
+    const userId = req.user.id;
 
     // Fetch manager profile with join using Supabase
     const { data: profileData, error: profileError } = await supabase

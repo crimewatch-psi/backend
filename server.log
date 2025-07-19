@@ -1,0 +1,79 @@
+Connected to Supabase database.
+node:events:496
+      throw er; // Unhand📨 INCOMING REQUEST: {
+  method: 'POST',
+  url: '/api/login',
+  origin: undefined,
+  authorization: 'None',
+  timestamp: '2025-07-15T17:32:05.027Z'
+}
+🔐 LOGIN ATTEMPT: {
+  email: 'amelia.zs@example.com',
+  timestamp: '2025-07-15T17:32:05.035Z'
+}
+✅ Supabase auth successful for: amelia.zs@example.com
+👤 User data query result: {
+  userData: {
+    id: 2,
+    email: 'amelia.zs@example.com',
+    nama: 'Amelia Zakiya Sabrina',
+    role: 'manager',
+    status: 'aktif'
+  },
+  userError: null
+}
+🔐 LOGIN SUCCESS: {
+  userId: 2,
+  email: 'amelia.zs@example.com',
+  role: 'manager',
+  timestamp: '2025-07-15T17:32:05.815Z'
+}
+📨 INCOMING REQUEST: {
+  method: 'GET',
+  url: '/api/session',
+  origin: undefined,
+  authorization: 'Bearer [TOKEN]',
+  timestamp: '2025-07-15T17:32:29.737Z'
+}
+📨 INCOMING REQUEST: {
+  method: 'GET',
+  url: '/api/admin/users',
+  origin: undefined,
+  authorization: 'Bearer [TOKEN]',
+  timestamp: '2025-07-15T17:32:57.509Z'
+}
+🔐 USER AUTHENTICATED: {
+  userId: 2,
+  email: 'amelia.zs@example.com',
+  role: 'manager',
+  timestamp: '2025-07-15T17:32:57.712Z'
+}
+📨 INCOMING REQUEST: {
+  method: 'GET',
+  url: '/api/manager/profile',
+  origin: undefined,
+  authorization: 'Bearer [TOKEN]',
+  timestamp: '2025-07-15T17:33:15.320Z'
+}
+🔐 USER AUTHENTICATED: {
+  userId: 2,
+  email: 'amelia.zs@example.com',
+  role: 'manager',
+  timestamp: '2025-07-15T17:33:15.521Z'
+}
+Error in profile endpoint: TypeError: Cannot read properties of undefined (reading 'user')
+    at /Users/mac/crimewatch/backend/routes/manager.js:417:32
+    at Layer.handle [as handle_request] (/Users/mac/crimewatch/backend/node_modules/express/lib/router/layer.js:95:5)
+    at next (/Users/mac/crimewatch/backend/node_modules/express/lib/router/route.js:149:13)
+    at requireManager (/Users/mac/crimewatch/backend/middleware/auth.js:122:3)
+    at Layer.handle [as handle_request] (/Users/mac/crimewatch/backend/node_modules/express/lib/router/layer.js:95:5)
+    at next (/Users/mac/crimewatch/backend/node_modules/express/lib/router/route.js:149:13)
+    at verifyToken (/Users/mac/crimewatch/backend/middleware/auth.js:73:5)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+📨 INCOMING REQUEST: {
+  method: 'POST',
+  url: '/api/logout',
+  origin: undefined,
+  authorization: 'Bearer [TOKEN]',
+  timestamp: '2025-07-15T17:34:31.014Z'
+}
